@@ -12,7 +12,7 @@ endif()
 project ("Genzo")
 
 # Add source to this project's executable.
-add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h")
+add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h")
 
 # Path to wxWidgets for compiling on Windows, set by user environment variable WXWIN
 set(wxWidgets_ROOT_DIR "$ENV{WXWIN}")
@@ -21,6 +21,9 @@ set(wxWidgets_LIB_DIR "$ENV{WXWIN}/lib/vc_x64_lib")
 find_package(wxWidgets REQUIRED COMPONENTS core base)
 include(${wxWidgets_USE_FILE})
 target_link_libraries(Genzo PRIVATE ${wxWidgets_LIBRARIES})
+
+find_package(libheif CONFIG REQUIRED)
+target_link_libraries(Genzo PRIVATE heif)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET Genzo PROPERTY CXX_STANDARD 20)
