@@ -41,3 +41,5 @@
 *.dwo
 /.vs
 /out
+/vcpkg_installed
+/app_resources.aps

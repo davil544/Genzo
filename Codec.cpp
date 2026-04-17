@@ -3,6 +3,7 @@
 #include "Codec.h"
 #include <wx/wx.h>
 #include <libheif/heif.h>
+#include <jpeglib.h>
 
 Codec::Codec()
 {
@@ -34,4 +35,39 @@ wxImage LoadImage(wxString path) {
 	heif_context_free(ctx);
 
 	return wxImage();
+}
+
+void write_jpeg(const char* filename,
+                const uint8_t* rgb,
+                int width,
+                int height,
+                int stride)
+{
+    jpeg_compress_struct cinfo;
+    jpeg_error_mgr jerr;
+
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_compress(&cinfo);
+
+    FILE* outfile = fopen(filename, "wb");
+    jpeg_stdio_dest(&cinfo, outfile);
+
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = 3;          // RGB
+    cinfo.in_color_space = JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 90, TRUE);
+
+    jpeg_start_compress(&cinfo, TRUE);
+
+    while (cinfo.next_scanline < cinfo.image_height) {
+        JSAMPROW row = (JSAMPROW)(rgb + cinfo.next_scanline * stride);
+        jpeg_write_scanlines(&cinfo, &row, 1);
+    }
+
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+    fclose(outfile);
 }

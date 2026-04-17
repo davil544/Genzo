@@ -12,7 +12,7 @@ endif()
 project ("Genzo")
 
 # Add source to this project's executable.
-add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h")
+add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h" app_resources.rc)
 
 # Path to wxWidgets for compiling on Windows, set by user environment variable WXWIN
 set(wxWidgets_ROOT_DIR "$ENV{WXWIN}")
@@ -22,8 +22,15 @@ find_package(wxWidgets REQUIRED COMPONENTS core base)
 include(${wxWidgets_USE_FILE})
 target_link_libraries(Genzo PRIVATE ${wxWidgets_LIBRARIES})
 
+# TODO: Make this a static import so I don't need external DLL files (Does not work with libheif unfortunately, must keep dynamic for now)
 find_package(libheif CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE heif)
+
+find_package(libjpeg-turbo CONFIG REQUIRED)
+target_link_libraries(Genzo PRIVATE libjpeg-turbo::jpeg)
+
+find_package(WebP CONFIG REQUIRED)
+target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::webpdemux)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET Genzo PROPERTY CXX_STANDARD 20)

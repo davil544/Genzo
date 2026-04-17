@@ -1,15 +1,18 @@
 #include "MainFrame.h"
 #include <wx/wx.h>
+#include <wx/wfstream.h>
 
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
     CreateControls();
 	SetupSizers();
     CreateStatusBar();
+    wxInitAllImageHandlers();
 	wxLogStatus(strWelcome);
 }
 
 void MainFrame::CreateControls() {
     panel = new wxPanel(this);
+    SetIcon(wxICON(IDI_ICON1));
     wxFont headlineFont(wxFontInfo(wxSize(0, 36)).Bold()), subheadlineFont(wxFontInfo(wxSize(0, 13)));;
     headerText = new wxStaticText(panel, wxID_ANY, "Genzo Image Converter", wxPoint(0, 22), wxSize(500, -1), wxALIGN_CENTRE_HORIZONTAL);
     headerText->SetFont(headlineFont);
@@ -57,7 +60,7 @@ void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
     
     wxFileDialog openFileDialog(this, _("Open Image file"), "", "",
         "Image files (*.heif;*.avif;*.png;*.jpg;*.tiff;*.y4m)|*.heif;*.avif;*.png;*.jpg;*.tiff;*.y4m", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-
+    /*
     if (openFileDialog.ShowModal() == wxID_OK) {
         wxString filePath = openFileDialog.GetPath();
 
@@ -68,6 +71,29 @@ void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
     }
     else {
         wxLogStatus(strWelcome);
+        btnConvert->Disable();
+	}*/
+
+    if (openFileDialog.ShowModal() == wxID_CANCEL) { wxLogStatus("Operation Cancelled"); return; }
+
+    wxFileInputStream is(openFileDialog.GetPath());
+    if (!is.IsOk()) {
+        wxMessageBox("Cannot open file", "Error", wxOK | wxICON_ERROR);
+        return;
+    }
+
+    wxImage img;
+    if (img.LoadFile(is, wxBITMAP_TYPE_ANY)) {
+        //wxBitmap bitmap(img); // TODO: Use this to show an image preview once loaded
+        wxString filePath = openFileDialog.GetPath();
+
+        wxMessageBox(wxString::Format("Selected file: %s", filePath), _("Info"));
+        wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
+        textCtrlFileInputPath->ChangeValue(filePath);
+        btnConvert->Enable();
+    }
+    else {
+        wxMessageBox("Failed to load image", "Error", wxOK | wxICON_ERROR);
         btnConvert->Disable();
     }
 }
