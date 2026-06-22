@@ -1,6 +1,9 @@
 #include "MainFrame.h"
+#include "Codec.h"
 #include <wx/wx.h>
 #include <wx/wfstream.h>
+#include <wx/filename.h>
+#include <wx/imaggif.h>
 
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
     CreateControls();
@@ -75,21 +78,47 @@ void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
 	}*/
 
     if (openFileDialog.ShowModal() == wxID_CANCEL) { wxLogStatus("Operation Cancelled"); return; }
+    wxString filePath = openFileDialog.GetPath();
 
-    wxFileInputStream is(openFileDialog.GetPath());
+    wxFileInputStream is(filePath);
     if (!is.IsOk()) {
         wxMessageBox("Cannot open file", "Error", wxOK | wxICON_ERROR);
         return;
     }
 
-    wxImage img;
-    if (img.LoadFile(is, wxBITMAP_TYPE_ANY)) {
-        //wxBitmap bitmap(img); // TODO: Use this to show an image preview once loaded
-        wxString filePath = openFileDialog.GetPath();
+    wxImage img; wxFileName fileName(filePath);
 
+    //insert code to load heif files here
+    if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
+        wxLogStatus(wxString::Format("HEIF Image successfully loaded!"), _("Info"));
+        img = Codec::LoadHEIFImage(filePath);
+        textCtrlFileInputPath->ChangeValue(filePath);
+        wxMessageBox("HEIF file loaded successfully!", "Info");
+		ShowImagePopup(this, img);
+        btnConvert->Enable();
+	}
+    else if (img.LoadFile(is, wxBITMAP_TYPE_ANY)) {
+        //wxBitmap bitmap(img); 
+        wxString filePath = openFileDialog.GetPath(), size = "";
+        size = wxString::Format("%d x %d", img.GetWidth(), img.GetHeight());
         wxMessageBox(wxString::Format("Selected file: %s", filePath), _("Info"));
         wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
+        wxMessageBox(wxString::Format("Image Size in Pixels: %s", size), _("File Info"));
+        
+		wxBitmapType type = img.GetType();
+        wxMessageBox(wxString::Format("Image Bitmap Type: %d", type), _("File Info"));
+
+        switch (type) {
+            case wxBITMAP_TYPE_BMP: wxMessageBox("Image Bitmap Type: BMP", _("File Info")); break;
+			case wxBITMAP_TYPE_JPEG: wxMessageBox("Image Bitmap Type: JPEG", _("File Info")); break;
+			case wxBITMAP_TYPE_PNG: wxMessageBox("Image Bitmap Type: PNG", _("File Info")); break;
+			case wxBITMAP_TYPE_GIF: wxMessageBox("Image Bitmap Type: GIF", _("File Info")); break;
+        }
+
         textCtrlFileInputPath->ChangeValue(filePath);
+
+        // TODO: Use this to show an image preview in the main window eventually
+        ShowImagePopup(this, img);
         btnConvert->Enable();
     }
     else {
@@ -140,4 +169,26 @@ void MainFrame::OnTextChange(wxCommandEvent& event) {
         wxLogStatus(strWelcome);
         btnConvert->Disable();
 	}
+}
+
+// For testing purposes to ensure the images are loading properly, will integrate this with the UI in the future
+void MainFrame::ShowImagePopup(wxWindow* parent, const wxImage& image) {
+    if (!image.IsOk()) {
+        wxMessageBox("The provided image is invalid or empty.", "Error", wxICON_ERROR | wxOK);
+        return;
+    }
+
+    wxDialog* popup = new wxDialog(parent, wxID_ANY, "Image Viewer",
+        wxDefaultPosition, wxDefaultSize,
+        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+    wxBitmap bitmap(image);
+    wxStaticBitmap* imageCtrl = new wxStaticBitmap(popup, wxID_ANY, bitmap);
+
+    // TODO: Make this smaller!
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(imageCtrl, 1, wxEXPAND | wxALL, 10);
+    popup->SetSizerAndFit(sizer);
+    popup->Center(wxBOTH);
+    popup->ShowModal();
+    popup->Destroy();
 }

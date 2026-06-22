@@ -24,4 +24,6 @@ class MainFrame : public wxFrame
 		void OnButtonConvertClick(wxCommandEvent& event);
 		//void OnSliderChange(wxCommandEvent& event);
 		void OnTextChange(wxCommandEvent& event);
+		void ShowImagePopup(wxWindow* parent, const wxImage& image);
+
 };
