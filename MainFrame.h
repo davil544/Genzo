@@ -16,14 +16,20 @@ class MainFrame : public wxFrame
 		wxStaticText* lblOutputFormat;
 		wxButton* btnBrowse;
 		wxButton* btnConvert; //TODO: Figure out how to combine these 2 button declarations into 1 statement
+		wxButton* btnPreview;
 		wxArrayString supportedFormats;
 		wxChoice* choiceOutputFormat;
 		const wxString strWelcome = "Welcome to the Genzo Image Converter!  Please select a file to get started.";
+		wxImage img;
 
 		void OnButtonBrowseClick(wxCommandEvent& event);
 		void OnButtonConvertClick(wxCommandEvent& event);
+		void OnButtonPreviewClick(wxCommandEvent& event);
+		void LoadImage(wxString filePath);
+		void OnPathEnter(wxCommandEvent& event);
+		//void OnTxtCtrlFilePathEnterPress(wxCommandEvent& event) {
 		//void OnSliderChange(wxCommandEvent& event);
 		void OnTextChange(wxCommandEvent& event);
-		void ShowImagePopup(wxWindow* parent, const wxImage& image);
+		//void ShowImagePopup(const wxImage& image);
 
 };

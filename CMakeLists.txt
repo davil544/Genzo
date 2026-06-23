@@ -12,7 +12,7 @@ endif()
 project ("Genzo")
 
 # Add source to this project's executable.
-add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h" app_resources.rc)
+add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h" app_resources.rc "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h")
 
 # Path to wxWidgets for compiling on Windows, set by user environment variable WXWIN
 set(wxWidgets_ROOT_DIR "$ENV{WXWIN}")
