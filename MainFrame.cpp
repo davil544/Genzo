@@ -85,9 +85,9 @@ void MainFrame::LoadImage(wxString filePath) {
     wxFileName fileName(filePath);
     fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);
     if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
-        wxLogStatus(wxString::Format("HEIF Image successfully loaded!"), _("Info"));
+        wxLogStatus(wxString::Format("Image successfully loaded using libheif!"), _("Info"));
         img = Codec::LoadHEIFImage(filePath);
-        wxMessageBox("HEIF file loaded successfully!", "Info");
+        wxMessageBox("File loaded successfully using libheif!", "Info");
         ShowStandaloneImage(img);
         btnConvert->Enable();
     }
@@ -102,10 +102,10 @@ void MainFrame::LoadImage(wxString filePath) {
         wxMessageBox(wxString::Format("Image Bitmap Type: %d", type), _("File Info"));
 
         switch (type) {
-        case wxBITMAP_TYPE_BMP: wxMessageBox("Image Bitmap Type: BMP", _("File Info")); break;
-        case wxBITMAP_TYPE_JPEG: wxMessageBox("Image Bitmap Type: JPEG", _("File Info")); break;
-        case wxBITMAP_TYPE_PNG: wxMessageBox("Image Bitmap Type: PNG", _("File Info")); break;
-        case wxBITMAP_TYPE_GIF: wxMessageBox("Image Bitmap Type: GIF", _("File Info")); break;
+            case wxBITMAP_TYPE_BMP: wxMessageBox("Image Bitmap Type: BMP", _("File Info")); break;
+            case wxBITMAP_TYPE_JPEG: wxMessageBox("Image Bitmap Type: JPEG", _("File Info")); break;
+            case wxBITMAP_TYPE_PNG: wxMessageBox("Image Bitmap Type: PNG", _("File Info")); break;
+            case wxBITMAP_TYPE_GIF: wxMessageBox("Image Bitmap Type: GIF", _("File Info")); break;
         }
 
         // TODO: Use this to show an image preview in the main window eventually
@@ -123,8 +123,7 @@ void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
 	wxLogStatus("Select a file");
     
     wxFileDialog openFileDialog(this, _("Open Image file"), "", "",
-        "Image files (*.heif;*.avif;*.png;*.jpg;*.tiff;*.y4m)|*.heif;*.avif;*.png;*.jpg;*.tiff;*.y4m", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-
+        "Image files (*.heif;*.heic;*.avif;*.bmp;*.png;*.jpg;*.tiff;*.webp)|*.heif;*.heic;*.avif;*.bmp;*.png;*.jpg;*.tiff;*.webp", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (openFileDialog.ShowModal() == wxID_CANCEL) { wxLogStatus("Operation Cancelled"); return; }
     
     wxString filePath = openFileDialog.GetPath();
@@ -139,7 +138,7 @@ void MainFrame::OnPathEnter(wxCommandEvent& event) {
 
 void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
     wxLogStatus("File Conversion Method Called!");
-    wxString outputFormat = "JPEG files (*.jpg;*.jpeg)|*.jpg;*.jpeg|PNG files (*.png)|*.png|HEIF files (*.heif)|*.heif";
+    wxString outputFormat = "JPEG files (*.jpg;*.jpeg)|*.jpg;*.jpeg|PNG files (*.png)|*.png|HEIF files (*.heif;*.heic)|*.heif;*.heic|AVIF files (*.avif)|*.avif";
 
     wxString filePath = "";
     
@@ -148,12 +147,38 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
 
     if (saveFileDialog.ShowModal() == wxID_OK) {
         filePath = saveFileDialog.GetPath();
+        wxFileName fileName(filePath);
+        fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);
 
         wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
         
-		// Insert logic for file conversion here, try catch statement advised for error handling. Also considering adding a progress bar
+		// TODO: considering adding a progress bar
+        if (img.IsOk()) {
+            wxLogStatus("Converting image, please wait...");
+            bool successful = false;
+            if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
+                successful = Codec::SaveHEIFImage(img, filePath);
+            }
+            else if (img.SaveFile(filePath)) {
+                wxLogMessage("Image successfully saved to %s", filePath);
+                successful = true;
+            }
+            else {
+                wxLogError("Failed to save image to '%s'. Check format support.", filePath);
+            }
+
+            if (successful) {
+                wxLogMessage("Image successfully saved to %s", filePath);
+                wxLogStatus("Image converted successfully!  Saved to %s", filePath);
+            }
+        }
+        else {
+            wxLogError("Attempted to save an invalid image.");
+        }
+        
         // TODO: Figure out how to append file extension on Linux, does not happen by default for some reason
-        wxMessageBox(wxString::Format("File converted and saved as: %s", filePath), _("Info"));
+        // TODO: Figure out how to preserve metadata during conversion
+        //wxMessageBox(wxString::Format("File converted and saved as: %s", filePath), _("Info"));
     }
     else {
         wxLogStatus("Conversion Cancelled");
@@ -162,14 +187,18 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
 }
 
 void MainFrame::OnButtonPreviewClick(wxCommandEvent& event) {
+    wxString path = textCtrlFileInputPath->GetValue();
+    if (!img.IsOk() && path != "") {
+        LoadImage(path);
+    }
     ShowStandaloneImage(img);
 }
 
 void MainFrame::OnTextChange(wxCommandEvent& event) {
     if (!event.GetString().IsEmpty()) {
         //TODO: Tweak this, file isn't necessarily loaded until it is!
-        wxString msg = wxString::Format("Selected file: %s", event.GetString());
-        wxLogStatus(msg, _("Info"));
+        //wxString msg = wxString::Format("Selected file: %s", event.GetString());
+        //wxLogStatus(msg, _("Info"));
         
         btnConvert->Enable();
     }

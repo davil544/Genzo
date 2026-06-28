@@ -3,8 +3,10 @@
   "version-string": "1.0.0",
   "dependencies": [
     {
-      "name": "libheif"
+      "name": "libheif",
+      "features": ["aom"]
     },
+    "dav1d",
     "libjpeg-turbo",
     "giflib",
     "libwebp"

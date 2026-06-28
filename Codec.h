@@ -8,9 +8,5 @@ public:
 	
 	//Codec(wxString filePath);
 	static wxImage LoadHEIFImage(const wxString& filepath);
-	static void write_jpeg(const char* filename,
-		const uint8_t* rgb,
-		int width,
-		int height,
-		int stride);
+	static bool SaveHEIFImage(const wxImage& image, const wxString& filePath, int quality = 80);
 };
