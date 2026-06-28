@@ -23,7 +23,6 @@ void MainFrame::CreateControls() {
     subheaderText = new wxStaticText(panel, wxID_ANY, "Created by Dylan Aviles", wxPoint(0, 22), wxSize(400, -1), wxALIGN_CENTRE_HORIZONTAL);
     subheaderText->SetFont(subheadlineFont);
 
-    //textCtrlFileInputPath = new wxTextCtrl(panel, wxID_ANY);
     textCtrlFileInputPath = new wxTextCtrl(panel, wxID_ANY, wxEmptyString,
         wxDefaultPosition, wxDefaultSize,
         wxTE_PROCESS_ENTER);
@@ -54,7 +53,6 @@ void MainFrame::SetupSizers() {
     inputSizer->AddSpacer(5);
     inputSizer->Add(textCtrlFileInputPath, wxSizerFlags().Proportion(1));
     inputSizer->AddSpacer(17);
-    //inputSizer->Add(btnBrowse);
 
     wxBoxSizer* buttonSizer = new wxBoxSizer(wxVERTICAL);
     buttonSizer->Add(btnBrowse, wxSizerFlags().CenterHorizontal());
@@ -76,60 +74,56 @@ void MainFrame::SetupSizers() {
 }
 
 void MainFrame::LoadImage(wxString filePath) {
-    wxFileInputStream is(filePath);
-    if (!is.IsOk()) {
+    if (!wxFileExists(filePath)) {
         wxMessageBox("Cannot open file", "Error", wxOK | wxICON_ERROR);
         return;
     }
 
     wxFileName fileName(filePath);
-    fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);
+    fileName.Normalize(wxPATH_NORM_ALL | wxPATH_NORM_ENV_VARS);
+
+    // TODO: Rework this if statement so I don't have 2 almost identical else statements!
+    // TODO: Rework the check for heif files to rely less on file extensions and more on file format!  Other image types load w/o an extension!
     if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
-        wxLogStatus(wxString::Format("Image successfully loaded using libheif!"), _("Info"));
         img = Codec::LoadHEIFImage(filePath);
-        wxMessageBox("File loaded successfully using libheif!", "Info");
-        ShowStandaloneImage(img);
-        btnConvert->Enable();
-    }
-    else if (img.LoadFile(is, wxBITMAP_TYPE_ANY)) {
-        wxString size = "";
-        size = wxString::Format("%d x %d", img.GetWidth(), img.GetHeight());
-        wxMessageBox(wxString::Format("Selected file: %s", filePath), _("Info"));
-        wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
-        wxMessageBox(wxString::Format("Image Size in Pixels: %s", size), _("File Info"));
-
-        wxBitmapType type = img.GetType();
-        wxMessageBox(wxString::Format("Image Bitmap Type: %d", type), _("File Info"));
-
-        switch (type) {
-            case wxBITMAP_TYPE_BMP: wxMessageBox("Image Bitmap Type: BMP", _("File Info")); break;
-            case wxBITMAP_TYPE_JPEG: wxMessageBox("Image Bitmap Type: JPEG", _("File Info")); break;
-            case wxBITMAP_TYPE_PNG: wxMessageBox("Image Bitmap Type: PNG", _("File Info")); break;
-            case wxBITMAP_TYPE_GIF: wxMessageBox("Image Bitmap Type: GIF", _("File Info")); break;
+        if (img.IsOk()) {
+            btnConvert->Enable();
         }
-
-        // TODO: Use this to show an image preview in the main window eventually
-        ShowStandaloneImage(img);
+        else {
+            img.Destroy();
+            wxMessageBox("Failed to load image using libheif!", "Error", wxOK | wxICON_ERROR);
+            btnConvert->Disable();
+            return;
+        }
+    }
+    else if (img.LoadFile(filePath, wxBITMAP_TYPE_ANY)) {
         btnConvert->Enable();
     }
     else {
-        wxMessageBox("Failed to load image", "Error", wxOK | wxICON_ERROR);
+        img.Destroy();
+        wxMessageBox("Failed to load image!", "Error", wxOK | wxICON_ERROR);
         btnConvert->Disable();
+        return;
     }
-    
+    wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
+    wxString size = wxString::Format("%d x %d", img.GetWidth(), img.GetHeight());
+    wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s", filePath, size), _("Info"));
+
+    // TODO: Use this to show an image preview in the main window eventually
+    ShowStandaloneImage(img);
 }
 
 void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
 	wxLogStatus("Select a file");
     
-    wxFileDialog openFileDialog(this, _("Open Image file"), "", "",
-        "Image files (*.heif;*.heic;*.avif;*.bmp;*.png;*.jpg;*.tiff;*.webp)|*.heif;*.heic;*.avif;*.bmp;*.png;*.jpg;*.tiff;*.webp", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    wxFileDialog openFileDialog(this, _("Open Image file"), "", "", 
+        allSupportedFormats, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (openFileDialog.ShowModal() == wxID_CANCEL) { wxLogStatus("Operation Cancelled"); return; }
     
     wxString filePath = openFileDialog.GetPath();
+    wxLogStatus("Loading image, please wait...");
     LoadImage(filePath);
     textCtrlFileInputPath->ChangeValue(filePath);
-    
 }
 
 void MainFrame::OnPathEnter(wxCommandEvent& event) {
@@ -137,22 +131,20 @@ void MainFrame::OnPathEnter(wxCommandEvent& event) {
 }
 
 void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
-    wxLogStatus("File Conversion Method Called!");
-    wxString outputFormat = "JPEG files (*.jpg;*.jpeg)|*.jpg;*.jpeg|PNG files (*.png)|*.png|HEIF files (*.heif;*.heic)|*.heif;*.heic|AVIF files (*.avif)|*.avif";
-
+    wxLogStatus("File Conversion Method Called!");  //TODO: Figure out what is needed to convert images to .dib bitmaps
     wxString filePath = "";
     
     wxFileDialog saveFileDialog(this, _("Save Image file"), "", "",
-        outputFormat, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        supportedFormats, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
     if (saveFileDialog.ShowModal() == wxID_OK) {
         filePath = saveFileDialog.GetPath();
         wxFileName fileName(filePath);
-        fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);
+        fileName.Normalize(wxPATH_NORM_ALL | wxPATH_NORM_ENV_VARS);
 
         wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
         
-		// TODO: considering adding a progress bar
+		// TODO: considering adding a progress bar, maybe separating the conversion process into another thread to so the UI doesn't freeze during conversion?
         if (img.IsOk()) {
             wxLogStatus("Converting image, please wait...");
             bool successful = false;
@@ -160,7 +152,7 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
                 successful = Codec::SaveHEIFImage(img, filePath);
             }
             else if (img.SaveFile(filePath)) {
-                wxLogMessage("Image successfully saved to %s", filePath);
+                //wxLogMessage("Image successfully saved to %s", filePath);
                 successful = true;
             }
             else {
