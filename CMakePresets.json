@@ -11,7 +11,8 @@
           "CMAKE_C_COMPILER": "cl.exe",
           "CMAKE_CXX_COMPILER": "cl.exe",
           "CMAKE_TOOLCHAIN_FILE": "$env{vcpkg}/scripts/buildsystems/vcpkg.cmake",
-          "$comment":  "The CMAKE_TOOLCHAIN_FILE variable ensures that libheic and related vcpkg packages are found and used during the CMake config process"
+          "VCPKG_OVERLAY_PORTS": "${sourceDir}/overlay-ports",
+          "$comment": "The CMAKE_TOOLCHAIN_FILE variable ensures that libheic and related vcpkg packages are found and used during the CMake config process"
         },
         "condition": {
           "type": "equals",

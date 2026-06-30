@@ -4,8 +4,9 @@
   "dependencies": [
     {
       "name": "libheif",
-      "features": ["aom"]
+      "features": ["aom", "kvazaar"]
     },
+    "kvazaar",
     "dav1d",
     "libjpeg-turbo",
     "giflib",

@@ -1,0 +1,32 @@
+{
+  "name": "libheif",
+  "version": "1.18.0",
+  "description": "HEIF and AVIF file format decoder and encoder",
+  "homepage": "https://github.com/strukturag/libheif",
+  "dependencies": [
+    "libde265",
+    "zlib",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ],
+  "features": {
+    "aom": {
+      "description": "AV1 codec support via aom",
+      "dependencies": [ "aom" ]
+    },
+    "kvazaar": {
+      "description": "HEVC encoding via kvazaar",
+      "dependencies": [ "kvazaar" ]
+    },
+    "dav1d": {
+      "description": "Fast AV1 decoding via dav1d",
+      "dependencies": [ "dav1d" ]
+    }
+  }
+}
