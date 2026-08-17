@@ -19,7 +19,10 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 
 void MainFrame::CreateControls() {
     panel = new wxPanel(this);
+
+    //TODO: Fix this so it compiles on Linux & macOS
     SetIcon(wxICON(IDI_ICON1));
+    
     wxFont headlineFont(wxFontInfo(wxSize(0, 36)).Bold()), subheadlineFont(wxFontInfo(wxSize(0, 13)));;
     headerText = new wxStaticText(panel, wxID_ANY, "Genzo Image Converter", wxPoint(0, 22), wxSize(500, -1), wxALIGN_CENTRE_HORIZONTAL);
     headerText->SetFont(headlineFont);

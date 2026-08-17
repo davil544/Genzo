@@ -22,13 +22,13 @@ class MainFrame : public wxFrame
 		//wxArrayString supportedFormats;
 		//wxChoice* choiceOutputFormat;
 		wxImage img;
-		const wxString& strWelcome = "Welcome to the Genzo Image Converter!  Please select a file to get started.",
+		const wxString strWelcome = "Welcome to the Genzo Image Converter!  Please select a file to get started.",
 			avif = "AVIF (*.avif)|*.avif", bmp = "BMP (*.bmp)|*.bmp", heic = "HEIF (*.heif; *.heic)|*.heif; *.heic", ico = "ICO (*.ico)|*.ico", jpg = "JPEG (*.jpg;*.jpeg;*.jpe;*.jfif)|*.jpg;*.jpeg;*.jpe;*.jfif",
 			/*gif = "GIF (*.gif)|*.gif",*/ png = "PNG (*.png)|*.png", tiff = "TIFF (*.tiff; *.tif)|*.tiff;*.tif", webp = "WEBP (*.webp) | *.webp", all = "All files (*.*)|*.*",
 			supportedFormats = jpg + "|" + bmp + "|" + png + "|" + avif  + "|" + heic + "|" + ico + "|" + tiff + "|" + webp + "|" + all,
 			
 			// These formats are for loading images only, not converting them! (*.avif;*.bmp;*.dib;*.heif;*.heic;*.jpg;*.png;*.tiff;*.webp)
-			// TODO: Add GIF support
+			// TODO: Add XPM & GIF support
 			allSupportedFormats = "Image files (*.*) |*.avif;*.bmp;*.dib;*.heif;*.heic;*.ico;*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.tiff;*.tif;*.webp" + std::string("|") + supportedFormats,
 			clear_bsd = "Redistribution and use in source and binary forms, with or without\n"
 			"modification, are permitted(subject to the limitations in the disclaimer\n"

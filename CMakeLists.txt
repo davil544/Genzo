@@ -34,11 +34,23 @@ target_link_libraries(Genzo PRIVATE ${wxWidgets_LIBRARIES})
 find_package(libheif CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE heif)
 
-find_package(libjpeg-turbo CONFIG REQUIRED)
-target_link_libraries(Genzo PRIVATE libjpeg-turbo::jpeg)
+find_package(JPEG REQUIRED)
+target_link_libraries(Genzo PRIVATE JPEG::JPEG)
 
 find_package(WebP CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::webpdemux)
+
+find_package(aom CONFIG QUIET)
+if(aom_FOUND)
+    # vcpkg usually provides aom::aom
+    if(TARGET aom::aom)
+        target_link_libraries(Genzo PRIVATE aom::aom)
+    elseif(TARGET aom)
+        target_link_libraries(Genzo PRIVATE aom)
+    endif()
+else()
+    message(STATUS "aom CONFIG package not found directly, relying on transitive dependencies (like libheif).")
+endif()
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET Genzo PROPERTY CXX_STANDARD 20)
