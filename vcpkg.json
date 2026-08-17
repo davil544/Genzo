@@ -6,7 +6,6 @@
       "name": "libheif",
       "features": ["aom", "kvazaar"]
     },
-    "kvazaar",
     "dav1d",
     "libjpeg-turbo",
     "giflib",

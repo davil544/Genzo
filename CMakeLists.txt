@@ -14,6 +14,15 @@ project ("Genzo")
 # Add source to this project's executable.
 add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h" app_resources.rc "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h")
 
+# Link the 'license' directory to your target so the 'About' function works properly
+add_custom_command(
+     TARGET Genzo POST_BUILD
+     COMMAND ${CMAKE_COMMAND} -E copy_directory
+         "${CMAKE_CURRENT_SOURCE_DIR}/third-party-licenses"
+         "$<TARGET_FILE_DIR:Genzo>/third-party-licenses"
+     COMMENT "Copying third party license folder to executable build directory..."
+)
+
 # Path to wxWidgets for compiling on Windows, set by user environment variable WXWIN
 set(wxWidgets_ROOT_DIR "$ENV{WXWIN}")
 set(wxWidgets_LIB_DIR "$ENV{WXWIN}/lib/vc_x64_lib")
@@ -22,7 +31,6 @@ find_package(wxWidgets REQUIRED COMPONENTS core base)
 include(${wxWidgets_USE_FILE})
 target_link_libraries(Genzo PRIVATE ${wxWidgets_LIBRARIES})
 
-# TODO: Make this a static import so I don't need external DLL files (Does not work with libheif unfortunately, must keep dynamic for now)
 find_package(libheif CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE heif)
 
