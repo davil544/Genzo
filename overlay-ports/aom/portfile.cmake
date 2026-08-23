@@ -1,7 +1,3 @@
-vcpkg_find_acquire_program(NASM)
-get_filename_component(NASM_EXE_PATH ${NASM} DIRECTORY)
-vcpkg_add_to_path(${NASM_EXE_PATH})
-
 vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
     URL "https://aomedia.googlesource.com/aom"
@@ -19,6 +15,8 @@ if(VCPKG_TARGET_ARCHITECTURE MATCHES "^(x86|x64)$")
     # Upstream AOM only uses NASM on x86-family targets. Non-x86 targets such as
     # Apple Silicon configure with ENABLE_NASM=OFF and should not require nasm.
     vcpkg_find_acquire_program(NASM)
+    get_filename_component(NASM_EXE_PATH ${NASM} DIRECTORY)
+    vcpkg_add_to_path(${NASM_EXE_PATH})
     set(aom_nasm_compiler "-DCMAKE_ASM_NASM_COMPILER=${NASM}")
 endif()
 

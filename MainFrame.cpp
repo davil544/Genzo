@@ -8,20 +8,36 @@
 #include <wx/stdpaths.h>
 //#include <wx/imaggif.h>
 
+#ifdef __WXGTK__
+    #include "genzo.xpm" 
+#endif
+
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
+    wxInitAllImageHandlers();
     CreateMenuBar();
     CreateControls();
     SetupSizers();
     CreateStatusBar();
-    wxInitAllImageHandlers();
     wxLogStatus(strWelcome);
 }
 
 void MainFrame::CreateControls() {
     panel = new wxPanel(this);
 
-    //TODO: Fix this so it compiles on Linux & macOS
-    SetIcon(wxICON(IDI_ICON1));
+    #if defined(__WXMSW__)
+        SetIcon(wxICON(IDI_ICON1));
+    #elif defined(__WXGTK__)
+        SetIcon(wxIcon(genzo_xpm));
+        // Icon seems to be setting but not showing via ssh compile to linux.  Why?
+    #elif defined(__WXMAC__)
+        // TODO: Add support for icns conversions, add icns file for macOS builds
+        //wxIcon macIcon;
+        //wxString iconPath = wxStandardPaths::Get().GetResourcesDir() + "/genzo.icns";
+        //if (macIcon.LoadFile(iconPath, wxBITMAP_TYPE_ICON)) {
+        //    SetIcon(macIcon);
+        //}
+    #endif
+
     
     wxFont headlineFont(wxFontInfo(wxSize(0, 36)).Bold()), subheadlineFont(wxFontInfo(wxSize(0, 13)));;
     headerText = new wxStaticText(panel, wxID_ANY, "Genzo Image Converter", wxPoint(0, 22), wxSize(500, -1), wxALIGN_CENTRE_HORIZONTAL);
