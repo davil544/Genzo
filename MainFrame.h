@@ -28,21 +28,21 @@ class MainFrame : public wxFrame
 			supportedFormats = jpg + "|" + bmp + "|" + png + "|" + avif  + "|" + heic + "|" + ico + "|" + tiff + "|" + webp + "|" + all,
 			
 			// These formats are for loading images only, not converting them! (*.avif;*.bmp;*.dib;*.heif;*.heic;*.jpg;*.png;*.tiff;*.webp)
-			// TODO: Add XPM & GIF support
+			// TODO: Add XPM, GIF, ICNS & SVG support
 			allSupportedFormats = "Image files (*.*) |*.avif;*.bmp;*.dib;*.heif;*.heic;*.ico;*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.tiff;*.tif;*.webp" + std::string("|") + supportedFormats,
-			clear_bsd = "Redistribution and use in source and binary forms, with or without\n"
-			"modification, are permitted(subject to the limitations in the disclaimer\n"
-			"below) provided that the following conditions are met :\n\n"
+			clear_bsd = "Redistribution and use in source and binary forms, with or without "
+			"modification, are permitted (subject to the limitations in the disclaimer "
+			"below) provided that the following conditions are met:\n\n"
 
-			"1. Redistributions of source code must retain the above copyright notice, this\n"
+			"1. Redistributions of source code must retain the above copyright notice, this "
 			"list of conditions and the following disclaimer.\n\n"
 
-			"2. Redistributions in binary form must reproduce the above copyright notice,\n"
-			"this list of conditions and the following disclaimer in the documentation\n"
+			"2. Redistributions in binary form must reproduce the above copyright notice, "
+			"this list of conditions and the following disclaimer in the documentation "
 			"and /or other materials provided with the distribution.\n\n"
 
-			"3. Neither the name of the copyright holder nor the names of its\n"
-			"contributors may be used to endorse or promote products derived from\n"
+			"3. Neither the name of the copyright holder nor the names of its "
+			"contributors may be used to endorse or promote products derived from "
 			"this software without specific prior written permission.\n\n"
 
 			"NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY "

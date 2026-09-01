@@ -1,6 +1,6 @@
 {
   "name": "kvazaar",
-  "version": "2.3.0",
+  "version": "2.3.2",
   "description": "Open-source HEVC encoder",
   "homepage": "https://github.com/ultravideo/kvazaar",
   "dependencies": [

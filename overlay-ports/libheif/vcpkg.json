@@ -1,6 +1,6 @@
 {
   "name": "libheif",
-  "version": "1.18.0",
+  "version": "1.23.2",
   "description": "HEIF and AVIF file format decoder and encoder",
   "homepage": "https://github.com/strukturag/libheif",
   "dependencies": [

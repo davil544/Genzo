@@ -61,13 +61,12 @@
             }
         },
         {
-            "name": "linux-debug",
-            "displayName": "Linux Debug",
+            "name": "linux-base",
+            "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "installDir": "${sourceDir}/out/install/${presetName}",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
                 "VCPKG_OVERLAY_PORTS": "${sourceDir}/overlay-ports",
                 "wxWidgets_CONFIG_EXECUTABLE": "/usr/bin/wx-config"
@@ -84,28 +83,59 @@
             }
         },
         {
-            "name": "macos-debug",
-            "displayName": "macOS Debug",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "installDir": "${sourceDir}/out/install/${presetName}",
-          "cacheVariables": {
-            "CMAKE_BUILD_TYPE": "Debug",
-            "VCPKG_OVERLAY_PORTS": "${sourceDir}/overlay-ports",
-            "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
-            "CMAKE_MAKE_PROGRAM": "/usr/local/bin/ninja",
-            "wxWidgets_CONFIG_EXECUTABLE": "/usr/local/bin/wx-config"
-          },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Darwin"
-            },
-            "vendor": {
-                "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": {
-                    "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
-                }
+            "name": "linux-debug",
+            "displayName": "x64 Debug",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
             }
-        }
+        },
+        {
+            "name": "linux-release",
+            "displayName": "x64 Release",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+          "name": "macos-base",
+          "hidden": true,
+          "generator": "Ninja",
+          "binaryDir": "${sourceDir}/out/build/${presetName}",
+          "installDir": "${sourceDir}/out/install/${presetName}",
+          "cacheVariables": {
+              "VCPKG_OVERLAY_PORTS": "${sourceDir}/overlay-ports",
+              "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+              "CMAKE_MAKE_PROGRAM": "/usr/local/bin/ninja",
+              "wxWidgets_CONFIG_EXECUTABLE": "/usr/local/bin/wx-config"
+          },
+          "condition": {
+              "type": "equals",
+              "lhs": "${hostSystemName}",
+              "rhs": "Darwin"
+          },
+          "vendor": {
+              "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": {
+                  "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
+              }
+          }
+      },
+      {
+          "name": "macos-debug",
+          "displayName": "macOS Debug",
+          "inherits": "macos-base",
+          "cacheVariables": {
+              "CMAKE_BUILD_TYPE": "Debug"
+          }
+      },
+      {
+          "name": "macos-release",
+          "displayName": "macOS Release",
+          "inherits": "macos-base",
+          "cacheVariables": {
+              "CMAKE_BUILD_TYPE": "Release"
+          }
+      }
     ]
 }

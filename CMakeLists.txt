@@ -11,7 +11,30 @@ endif()
 
 project ("Genzo")
 
-add_executable (Genzo WIN32 "App.cpp" "App.h" "MainFrame.cpp" "MainFrame.h" "Codec.cpp" "Codec.h" app_resources.rc "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h")
+if(APPLE)
+    message(STATUS "Configuring Genzo as a macOS .app bundle")
+
+    add_executable(Genzo MACOSX_BUNDLE
+        "App.cpp" "App.h"
+        "MainFrame.cpp" "MainFrame.h"
+        "Codec.cpp" "Codec.h"
+        "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h"
+    )
+
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/Genzo.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+    target_sources(Genzo PRIVATE ${CMAKE_SOURCE_DIR}/Genzo.icns)
+else()
+    add_executable(Genzo WIN32
+        "App.cpp" "App.h"
+        "MainFrame.cpp" "MainFrame.h"
+        "Codec.cpp" "Codec.h"
+        "app_resources.rc"
+        "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h"
+    )
+endif()
+
 
 add_custom_command(
      TARGET Genzo POST_BUILD
