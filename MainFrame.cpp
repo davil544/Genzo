@@ -28,14 +28,11 @@ void MainFrame::CreateControls() {
         SetIcon(wxICON(IDI_ICON1));
     #elif defined(__WXGTK__)
         SetIcon(wxIcon(genzo_xpm));
-        // Icon seems to be setting but not showing via ssh compile to linux.  Why?
     #elif defined(__WXMAC__)
-        // TODO: Add support for icns conversions, add icns file for macOS builds
-        //wxIcon macIcon;
-        //wxString iconPath = wxStandardPaths::Get().GetResourcesDir() + "/genzo.icns";
-        //if (macIcon.LoadFile(iconPath, wxBITMAP_TYPE_ICON)) {
-        //    SetIcon(macIcon);
-        //}
+        wxIcon macIcon;
+        if (macIcon.LoadFile(wxStandardPaths::Get().GetResourcesDir() + "genzo.icns", wxBITMAP_TYPE_ICON)) {
+            SetIcon(macIcon);
+        }
     #endif
 
     
