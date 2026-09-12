@@ -1,6 +1,6 @@
 # <img src="https://github.com/davil544/Genzo/blob/master/genzo.ico" alt="Genzo icon" width="3%">  Genzo Image Converter
 
-Genzo is a cross-platform image converter, designed to transcode images between common formats quickly and effortlessly.  It has been confirmed to run on Windows 10 and 11, macOS 26 (Tahoe for Intel Macs), and Linux (Using GTK 3 or higher, tested on Ubuntu 26.04 LTS).
+Genzo is a cross-platform image converter, designed to transcode images between common formats quickly and effortlessly.  It has been confirmed to run on Windows 10 and 11, macOS 26 (Tahoe for Intel Macs), and Linux (Using GTK 3.2 or higher, tested on Ubuntu 26.04 LTS).
 
 Genzo currently supports the following image formats:
 <table>

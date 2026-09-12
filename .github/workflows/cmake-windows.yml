@@ -1,0 +1,107 @@
+name: CMake on Windows (x64 & arm64)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    name: "build (windows-latest ${{ matrix.arch }}, ${{ matrix.build_type }}, ${{ matrix.c_compiler }})"
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+        build_type: [Release]
+        c_compiler: [cl]
+        cpp_compiler: [cl]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: ${{ matrix.arch }}
+
+    - name: Cache wxWidgets
+      id: cache-wx
+      uses: actions/cache@v4
+      with:
+        path: |
+          wx-install-${{ matrix.arch }}
+          wxWidgets-build-${{ matrix.arch }}
+        key: wxwidgets-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.cpp_compiler }}-${{ matrix.build_type }}-v3.2.5
+
+    - name: Set wxWidgets Path
+      shell: bash
+      run: |
+        echo "WXWIN=${{ github.workspace }}\wx-install-${{ matrix.arch }}" >> "$GITHUB_ENV"
+
+    - name: Download wxWidgets
+      if: steps.cache-wx.outputs.cache-hit != 'true'
+      run: git clone --depth 1 --shallow-submodules --recurse-submodules --branch v3.2.5 https://github.com/wxWidgets/wxWidgets.git wxWidgets
+
+    - name: Build and Install wxWidgets
+      if: steps.cache-wx.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cmake -B wxWidgets-build-${{ matrix.arch }} \
+              -S wxWidgets \
+              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DwxBUILD_USE_STATIC_RUNTIME=OFF \
+              -DwxBUILD_SHARED=OFF \
+              -DwxBUILD_INSTALL_PREFIX=$WXWIN \
+              -DwxBUILD_MSVC_MULTIPLE_CONFIGS=ON \
+              -DwxBUILD_COMPILER_PREFIX=vc_${{ matrix.arch }} \
+              -DwxBUILD_MONOLITHIC=OFF \
+              -DwxUSE_UNICODE=ON \
+              -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+              -A ${{ matrix.arch == 'arm64' && 'ARM64' || 'x64' }}
+
+        cmake --build wxWidgets-build-${{ matrix.arch }} --config ${{ matrix.build_type }} --parallel 4
+        cmake --install wxWidgets-build-${{ matrix.arch }} --config ${{ matrix.build_type }} --prefix wx-install-${{ matrix.arch }}
+
+    - name: Set reusable strings
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}\build-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
+
+    - name: Configure CMake
+      shell: bash
+      run: |
+        cmake -G "Visual Studio 18 2026" \
+              -A ${{ matrix.arch == 'arm64' && 'ARM64' || 'x64' }} \
+              -B build-${{ matrix.arch }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_PREFIX_PATH="$WXWIN" \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" \
+              -DVCPKG_OVERLAY_PORTS="${{ github.workspace }}\overlay-ports" \
+              -DVCPKG_TARGET_TRIPLET="${{ matrix.arch }}-windows" \
+              -DwxWidgets_ROOT_DIR="$WXWIN" \
+              -DwxWidgets_LIB_DIR="$WXWIN\lib\vc_${{ matrix.arch }}_lib" \
+              -S .
+
+    - name: Upload vcpkg failure logs
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: vcpkg-logs-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}
+        path: |
+          ${{ github.workspace }}\build-${{ matrix.arch }}\vcpkg-manifest-install.log
+          ${{ github.workspace }}\build-${{ matrix.arch }}\vcpkg_installed\**\*.log
+          ${{ github.workspace }}\build-${{ matrix.arch }}\vcpkg_installed\**\issue_body.md
+        retention-days: 3
+
+    - name: Build
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      run: ctest --build-config ${{ matrix.build_type }}

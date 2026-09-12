@@ -1,0 +1,105 @@
+name: CMake on macOS (x64 & arm64)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    name: build (${{ matrix.os }}, ${{ matrix.c_compiler }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+        - os: macos-15
+          arch: arm64
+          c_compiler: clang
+          cpp_compiler: clang++
+          build_type: Release
+
+        - os: macos-15-intel
+          arch: x64
+          c_compiler: clang
+          cpp_compiler: clang++
+          build_type: Release
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install macOS Dependencies
+      run: |
+        brew install wxwidgets nasm autoconf automake libtool
+        echo "/opt/homebrew/bin" >> $GITHUB_PATH
+
+    - name: Set isolated vcpkg root
+      run: |
+        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg-${{ matrix.os }}-${{ matrix.c_compiler }}" >> "$GITHUB_ENV"
+
+    - name: Bootstrap vcpkg
+      run: |
+        rm -rf "$VCPKG_ROOT"
+        git clone --recursive https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+        "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+    - name: Disable vcpkg binary caching
+      run: |
+        echo "VCPKG_FEATURE_FLAGS=-binarycaching" >> "$GITHUB_ENV"
+
+    - name: Remove community triplet override and symlink official osx triplet
+      run: |
+        rm -f "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx.cmake"
+
+        if [ -f "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx-release.cmake" ]; then
+            mkdir -p "$VCPKG_ROOT/triplets/community"
+            ln -sf "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx-release.cmake" \
+                   "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx.cmake"
+        else
+            echo "Community ${{ matrix.arch }}-osx-release triplet not found!"
+            ls "$VCPKG_ROOT/triplets"
+        fi
+
+    - name: Configure CMake
+      run: |
+        WX_CONFIG=$(which wx-config)
+        WX_ROOT=$(dirname $(dirname $WX_CONFIG))
+
+        echo "WX_CONFIG = $WX_CONFIG"
+        echo "WX_ROOT = $WX_ROOT"
+
+        cmake -G "Unix Makefiles" \
+              -B build \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_OVERLAY_PORTS="${{ github.workspace }}/overlay-ports" \
+              -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-osx \
+              -DVCPKG_HOST_TRIPLET=${{ matrix.arch }}-osx \
+              -DwxWidgets_CONFIG_EXECUTABLE="$WX_CONFIG" \
+              -DwxWidgets_ROOT_DIR="$WX_ROOT" \
+              -S .
+
+    - name: Upload vcpkg failure logs
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: vcpkg-logs-${{ matrix.os }}-${{ matrix.c_compiler }}
+        path: |
+          ${{ github.workspace }}/build/vcpkg-manifest-install.log
+          ${{ github.workspace }}/build/vcpkg_installed/**/*.log
+          ${{ github.workspace }}/build/vcpkg_installed/**/issue_body.md
+          ${{ env.VCPKG_ROOT }}/buildtrees/**/*.log
+          ${{ env.VCPKG_ROOT }}/buildtrees/kvazaar/src/**/*
+        retention-days: 3
+
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: build
+      run: ctest --build-config ${{ matrix.build_type }}

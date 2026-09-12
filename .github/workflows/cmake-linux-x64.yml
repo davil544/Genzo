@@ -1,0 +1,118 @@
+name: CMake on Linux (x64)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        os: [ubuntu-latest]
+        build_type: [Release]
+        c_compiler: [gcc, clang]
+        include:
+          - os: ubuntu-latest
+            c_compiler: gcc
+            cpp_compiler: g++
+          - os: ubuntu-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Free disk space safely for C++ builds
+      run: |
+        echo "Cleaning temp directories..."
+        sudo rm -rf /home/runner/work/_temp/*
+        sudo rm -rf /home/runner/.cache/*
+        sudo rm -rf /tmp/*
+
+        echo "Cleaning APT cache..."
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+
+        df -h
+
+    - name: Install Linux Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwxgtk3.2-dev cmake make ninja-build build-essential pkg-config python3 nasm autoconf automake libtool
+
+        if [ ! -f /usr/local/bin/ninja ]; then
+          sudo ln -s "$(command -v ninja)" /usr/local/bin/ninja
+        fi
+
+        echo "/usr/local/bin" >> $GITHUB_PATH
+
+    - name: Set isolated vcpkg root per compiler
+      run: |
+        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg-${{ matrix.c_compiler }}" >> "$GITHUB_ENV"
+
+    - name: Bootstrap vcpkg
+      run: |
+        rm -rf "$VCPKG_ROOT"
+        git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+        "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+
+        sudo rm -f /usr/local/bin/vcpkg
+        echo "$VCPKG_ROOT" >> $GITHUB_PATH
+
+    - name: Export vcpkg env
+      run: |
+        echo "VCPKG_OVERLAY_PORTS=${{ github.workspace }}/overlay-ports" >> "$GITHUB_ENV"
+
+    - name: vcpkg install manifest dependencies
+      run: |
+        echo "Running vcpkg install for compiler ${{ matrix.c_compiler }}"
+        "$VCPKG_ROOT"/vcpkg install --overlay-ports=${{ github.workspace }}/overlay-ports --triplet x64-linux --recurse || true
+
+    - name: Set compilers env for CMake
+      run: |
+        if [ "${{ matrix.c_compiler }}" = "gcc" ]; then
+          echo "CC=/usr/bin/gcc" >> "$GITHUB_ENV"
+          echo "CXX=/usr/bin/g++" >> "$GITHUB_ENV"
+        else
+          echo "CC=/usr/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=/usr/bin/clang++" >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure CMake
+      run: |
+        cmake -G Ninja \
+              -B build \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_OVERLAY_PORTS="${{ github.workspace }}/overlay-ports" \
+              -DVCPKG_TARGET_TRIPLET=x64-linux \
+              -DwxWidgets_CONFIG_EXECUTABLE=/usr/bin/wx-config \
+              -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
+              -S .
+
+    - name: Upload vcpkg failure logs
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: vcpkg-logs-${{ matrix.os }}-${{ matrix.c_compiler }}
+        path: |
+          ${{ github.workspace }}/build/vcpkg-manifest-install.log
+          ${{ github.workspace }}/build/vcpkg_installed/**/*.log
+          ${{ github.workspace }}/build/vcpkg_installed/**/issue_body.md
+          ${{ env.VCPKG_ROOT }}/buildtrees/**/*.log
+        retention-days: 3
+
+    - name: Build
+      run: cmake --build build --config ${{ matrix.build_type }}
+
+    - name: Test
+      working-directory: build
+      run: ctest --build-config ${{ matrix.build_type }}
