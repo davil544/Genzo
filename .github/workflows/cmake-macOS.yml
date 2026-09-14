@@ -1,4 +1,5 @@
 name: CMake on macOS (x64 & arm64)
+permissions: read-all
 
 on:
   push:
