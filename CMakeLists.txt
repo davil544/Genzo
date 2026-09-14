@@ -83,6 +83,16 @@ target_link_libraries(Genzo PRIVATE JPEG::JPEG)
 find_package(WebP CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::webpdemux)
 
+find_package(OpenJPEG CONFIG REQUIRED)
+#target_link_libraries(Genzo PRIVATE openjp2)
+
+if(!WIN32) #TODO: Get libicns to work on Windows, requires compilation of debug/lib/icns.lib
+    find_package(libpng CONFIG REQUIRED)
+    find_package(libicns REQUIRED)
+    #find_package(ZLIB REQUIRED)
+    target_link_libraries(Genzo PRIVATE libicns::icns PNG::PNG ZLIB::ZLIB openjp2)
+endif()
+
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET Genzo PROPERTY CXX_STANDARD 20)
 endif()
