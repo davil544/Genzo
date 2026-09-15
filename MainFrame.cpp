@@ -142,6 +142,31 @@ void MainFrame::LoadImage(wxString filePath) {
             return;
         }
     }
+    else if (fileName.GetExt() == "icns") {
+        img = Codec::LoadICNS(filePath);
+
+        if (img.IsOk()) {
+            btnConvert->Enable();
+        }
+        else {
+            img.Destroy();
+            btnConvert->Disable();
+            return;
+        }
+    }
+
+    else if (fileName.GetExt() == "jp2" || fileName.GetExt() == "jpf") {
+        img = Codec::LoadJP2(filePath);
+
+        if (img.IsOk()) {
+            btnConvert->Enable();
+        }
+        else {
+            img.Destroy();
+            btnConvert->Disable();
+            return;
+        }
+    }
     else if (img.LoadFile(filePath, wxBITMAP_TYPE_ANY)) {
         btnConvert->Enable();
     }
@@ -196,6 +221,9 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
             bool successful = false;
             if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
                 successful = Codec::SaveHEIFImage(img, filePath);
+            }
+            else if (fileName.GetExt() == "icns") {
+                successful = Codec::SaveICNS(img, filePath);
             }
             else if (img.SaveFile(filePath)) {
                 //wxLogMessage("Image successfully saved to %s", filePath);

@@ -10,11 +10,7 @@
     "libjpeg-turbo",
     "giflib",
     "libwebp",
-    "openjpeg",
-    {
-      "name": "libicns",
-      "platform": "!windows"
-    }
+    "openjpeg"
   ],
   "builtin-baseline": "3af1d1e60af2b2abf55760538cd607829029b07a"
 

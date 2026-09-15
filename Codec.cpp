@@ -1,14 +1,11 @@
 #include "Codec.h"
 #include <wx/wx.h>
 #include <wx/filename.h>
+#include <wx/mstream.h>
+#include <wx/wfstream.h>
+#include <wx/image.h>
 #include <libheif/heif.h>
-
-//Codec::Codec(wxString filePath)
-//{
-	//init variables here
-	//wxImage img;
-    //wxFileName fileName(filePath);
-//}
+#include <openjpeg.h>
 
 wxImage Codec::LoadHEIFImage(const wxString& filepath) {
     wxImage emptyImage;
@@ -153,4 +150,352 @@ bool Codec::SaveHEIFImage(const wxImage& img, const wxString& filePath, int qual
     heif_image_release(h_image);
 
     return success;
+}
+
+wxImage Codec::LoadJP2(const wxString& filePath) {
+    wxImage empty;
+
+    wxFileInputStream jp2Stream(filePath);
+    if (!jp2Stream.IsOk()) {
+        wxLogError("Failed to open JP2 file: %s", filePath);
+        return empty;
+    }
+
+    size_t dataSize = jp2Stream.GetLength();
+    if (dataSize == 0) {
+        wxLogError("JP2 file is empty: %s", filePath);
+        return empty;
+    }
+
+    wxMemoryBuffer buffer(dataSize);
+    if (jp2Stream.Read(buffer.GetData(), dataSize).LastRead() != dataSize) {
+        wxLogError("Failed to read JP2 file into memory: %s", filePath);
+        return empty;
+    }
+
+    unsigned char* data = static_cast<unsigned char*>(buffer.GetData());
+
+    wxImage img = Codec::DecodeJP2(data, dataSize);
+    if (!img.IsOk()) {
+        wxLogError("OpenJPEG failed to decode JP2 file: %s", filePath);
+        return empty;
+    }
+
+    return img;
+}
+
+wxImage Codec::DecodeJP2(const unsigned char* data, size_t size) {
+    wxImage empty;
+
+    opj_dparameters_t params;
+    opj_set_default_decoder_parameters(&params);
+
+    opj_stream_t* stream = opj_stream_create(size, true);
+    if (!stream) return empty;
+
+    opj_stream_set_user_data(stream, (void*)data, nullptr);
+    opj_stream_set_user_data_length(stream, size);
+
+    opj_stream_set_read_function(stream,
+        [](void* p_buffer, size_t p_nb_bytes, void* p_user_data) -> size_t {
+            unsigned char*& ptr = *(unsigned char**)p_user_data;
+            memcpy(p_buffer, ptr, p_nb_bytes);
+            ptr += p_nb_bytes;
+            return p_nb_bytes;
+        });
+
+    unsigned char* readPtr = const_cast<unsigned char*>(data);
+    opj_stream_set_user_data(stream, &readPtr, nullptr);
+
+    opj_codec_t* codec = opj_create_decompress(OPJ_CODEC_JP2);
+    if (!codec) {
+        opj_stream_destroy(stream);
+        return empty;
+    }
+
+    if (!opj_setup_decoder(codec, &params)) {
+        opj_destroy_codec(codec);
+        opj_stream_destroy(stream);
+        return empty;
+    }
+
+    opj_image_t* jp2Image = nullptr;
+    if (!opj_read_header(stream, codec, &jp2Image)) {
+        opj_destroy_codec(codec);
+        opj_stream_destroy(stream);
+        return empty;
+    }
+
+    if (!opj_decode(codec, stream, jp2Image)) {
+        opj_image_destroy(jp2Image);
+        opj_destroy_codec(codec);
+        opj_stream_destroy(stream);
+        return empty;
+    }
+
+    int w = jp2Image->x1 - jp2Image->x0;
+    int h = jp2Image->y1 - jp2Image->y0;
+
+    bool hasAlpha = (jp2Image->numcomps == 4);
+
+    wxImage img(w, h, hasAlpha);
+
+    unsigned char* rgb = img.GetData();
+    unsigned char* alpha = hasAlpha ? img.GetAlpha() : nullptr;
+
+    for (int y = 0; y < h; ++y)
+    {
+        for (int x = 0; x < w; ++x)
+        {
+            int idx = y * w + x;
+
+            rgb[idx * 3 + 0] = jp2Image->comps[0].data[idx];
+            rgb[idx * 3 + 1] = jp2Image->comps[1].data[idx];
+            rgb[idx * 3 + 2] = jp2Image->comps[2].data[idx];
+
+            if (hasAlpha)
+                alpha[idx] = jp2Image->comps[3].data[idx];
+        }
+    }
+
+    opj_image_destroy(jp2Image);
+    opj_destroy_codec(codec);
+    opj_stream_destroy(stream);
+
+    return img;
+}
+
+wxImage Codec::LoadICNS(const wxString& filePath) {
+    wxImage empty;
+
+    wxFileInputStream in(filePath);
+    if (!in.IsOk()) {
+        wxLogError("Failed to open ICNS file: %s", filePath);
+        return empty;
+    }
+
+    size_t fileSize = in.GetLength();
+    if (fileSize < 8) {
+        wxLogError("ICNS file too small: %s", filePath);
+        return empty;
+    }
+
+    wxMemoryBuffer buffer(fileSize);
+    if (in.Read(buffer.GetData(), fileSize).LastRead() != fileSize) {
+        wxLogError("Failed to read ICNS file into memory: %s", filePath);
+        return empty;
+    }
+
+    const unsigned char* data = static_cast<const unsigned char*>(buffer.GetData());
+
+    if (fileSize < 8 || memcmp(data, "icns", 4) != 0) {
+        wxLogError("Invalid ICNS header in file: %s", filePath);
+        return empty;
+    }
+
+    auto ReadBE32 = [](const unsigned char* p) -> uint32_t {
+        return (static_cast<uint32_t>(p[0]) << 24) |
+            (static_cast<uint32_t>(p[1]) << 16) |
+            (static_cast<uint32_t>(p[2]) << 8) |
+            static_cast<uint32_t>(p[3]);
+        };
+
+    uint32_t totalSize = ReadBE32(data + 4);
+    if (totalSize > fileSize) {
+        totalSize = static_cast<uint32_t>(fileSize);
+    }
+
+    wxImage best;
+    long bestPixels = 0;
+
+    size_t offset = 8;
+    while (offset + 8 <= totalSize)
+    {
+        const unsigned char* chunkHeader = data + offset;
+        char type[5] = { 0 };
+        memcpy(type, chunkHeader, 4);
+
+        uint32_t chunkSize = ReadBE32(chunkHeader + 4);
+
+        if (chunkSize < 8 || offset + chunkSize > totalSize) {
+            wxLogError("Malformed ICNS chunk '%s' at offset %zu, stopping scan.", type, offset);
+            break;
+        }
+
+        const unsigned char* chunkData = chunkHeader + 8;
+        size_t chunkDataSize = chunkSize - 8;
+
+        if (chunkDataSize > 8 &&
+            chunkData[0] == 0x89 && chunkData[1] == 0x50 &&
+            chunkData[2] == 0x4E && chunkData[3] == 0x47)
+        {
+            wxMemoryInputStream mem(chunkData, chunkDataSize);
+            wxImage candidate;
+            if (candidate.LoadFile(mem, wxBITMAP_TYPE_PNG) && candidate.IsOk())
+            {
+                long pixels = static_cast<long>(candidate.GetWidth()) *
+                    static_cast<long>(candidate.GetHeight());
+                if (pixels > bestPixels)
+                {
+                    bestPixels = pixels;
+                    best = candidate;
+                }
+            }
+        }
+
+        offset += chunkSize;
+    }
+
+    if (!best.IsOk()) {
+        wxLogError("No usable PNG image found in ICNS file: %s", filePath);
+        return empty;
+    }
+
+    return best;
+}
+
+static void WriteBE32(wxFileOutputStream& out, uint32_t value)
+{
+    unsigned char b[4];
+    b[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
+    b[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
+    b[2] = static_cast<unsigned char>((value >> 8) & 0xFF);
+    b[3] = static_cast<unsigned char>(value & 0xFF);
+    out.Write(b, 4);
+}
+
+static wxImage ScaleWithTransparentPadding(const wxImage& src, int targetSize) {
+    wxImage working = src.Copy();
+
+    if (!working.HasAlpha()) {
+        working.InitAlpha();
+    }
+
+    int srcW = working.GetWidth();
+    int srcH = working.GetHeight();
+
+    double scale = std::min(
+        static_cast<double>(targetSize) / srcW,
+        static_cast<double>(targetSize) / srcH
+    );
+
+    int scaledW = std::max(1, static_cast<int>(std::round(srcW * scale)));
+    int scaledH = std::max(1, static_cast<int>(std::round(srcH * scale)));
+
+    wxImage scaled = working.Scale(scaledW, scaledH, wxIMAGE_QUALITY_HIGH);
+    if (!scaled.HasAlpha()) {
+        scaled.InitAlpha();
+    }
+
+    wxImage padded(targetSize, targetSize);
+    padded.InitAlpha();
+
+    unsigned char* dstRGB = padded.GetData();
+    unsigned char* dstAlpha = padded.GetAlpha();
+
+    memset(dstRGB, 0, targetSize * targetSize * 3);
+    memset(dstAlpha, 0, targetSize * targetSize);
+
+    unsigned char* srcRGB = scaled.GetData();
+    unsigned char* srcAlpha = scaled.GetAlpha();
+
+    int offsetX = (targetSize - scaledW) / 2;
+    int offsetY = (targetSize - scaledH) / 2;
+
+    for (int y = 0; y < scaledH; ++y)
+    {
+        int dstY = offsetY + y;
+        if (dstY < 0 || dstY >= targetSize) continue;
+
+        unsigned char* dstRowRGB = dstRGB + (dstY * targetSize + offsetX) * 3;
+        const unsigned char* srcRowRGB = srcRGB + (y * scaledW) * 3;
+        memcpy(dstRowRGB, srcRowRGB, scaledW * 3);
+
+        unsigned char* dstRowAlpha = dstAlpha + (dstY * targetSize + offsetX);
+        const unsigned char* srcRowAlpha = srcAlpha + (y * scaledW);
+        memcpy(dstRowAlpha, srcRowAlpha, scaledW);
+    }
+
+    return padded;
+}
+
+bool Codec::SaveICNS(const wxImage& img, const wxString& filePath)
+{
+    if (!img.IsOk()) {
+        wxLogError("Invalid wxImage passed to SaveICNS.");
+        return false;
+    }
+
+    struct IconSpec {
+        const char* type;
+        int size;
+    };
+
+    const IconSpec icons[] = {
+        {"icp4", 16},
+        {"icp5", 32},
+        {"icp6", 64},
+        {"ic07", 128},
+        {"ic08", 256},
+        {"ic09", 512},
+        {"ic10", 1024},
+        {"ic11", 32},
+        {"ic12", 64},
+        {"ic13", 256},
+        {"ic14", 512},
+    };
+
+    wxFileOutputStream out(filePath);
+    if (!out.IsOk()) {
+        wxLogError("Failed to open ICNS output file: %s", filePath);
+        return false;
+    }
+
+    char magic[4] = { 'i','c','n','s' };
+    out.Write(magic, 4);
+
+    WriteBE32(out, 0);
+
+    uint32_t totalSize = 8;
+
+    for (const auto& icon : icons)
+    {
+        wxImage scaled = ScaleWithTransparentPadding(img, icon.size);
+
+        wxMemoryOutputStream pngStream;
+        if (!scaled.SaveFile(pngStream, wxBITMAP_TYPE_PNG)) {
+            wxLogError("Failed to encode PNG for ICNS block: %s", icon.type);
+            return false;
+        }
+
+        size_t pngSize = pngStream.GetSize();
+        if (pngSize == 0) {
+            wxLogError("Empty PNG stream for ICNS block: %s", icon.type);
+            return false;
+        }
+
+        wxStreamBuffer* buf = pngStream.GetOutputStreamBuffer();
+        buf->Seek(0, wxFromStart);
+
+        wxMemoryBuffer pngData(pngSize);
+        buf->Read(pngData.GetWriteBuf(pngSize), pngSize);
+        pngData.UngetWriteBuf(pngSize);
+
+        char type[4];
+        memcpy(type, icon.type, 4);
+        out.Write(type, 4);
+
+        uint32_t blockSize = 8 + static_cast<uint32_t>(pngSize);
+        WriteBE32(out, blockSize);
+
+        out.Write(pngData.GetData(), pngSize);
+
+        totalSize += blockSize;
+    }
+
+    out.SeekO(4, wxFromStart);
+    WriteBE32(out, totalSize);
+
+    wxLogMessage("ICNS file successfully written: %s", filePath);
+    return true;
 }
