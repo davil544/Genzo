@@ -29,7 +29,7 @@ class MainFrame : public wxFrame
 			
 			// These formats are for loading images only, not converting them! (*.avif;*.bmp;*.dib;*.heif;*.heic;*.jpg;*.png;*.tiff;*.webp)
 			// TODO: Add XPM, GIF, ICNS & SVG support
-			allSupportedFormats = "Image files (*.*) |*.avif;*.bmp;*.dib;*.heif;*.heic;*.ico;*.icns;*.jpg;*.jpeg;*.jpe;*.jfif;*.jp2;*.jpf;*.png;*.tiff;*.tif;*.webp" + std::string("|") + supportedFormats,
+			allSupportedFormats = "Image files (*.*) |*.avif;*.bmp;*.dib;*.heif;*.heic;*.ico;*.icns;*.jpg;*.jpeg;*.jpe;*.jfif;*.jp2;*.jpf;*.jpx;*.j2c;*.j2k;*.png;*.tiff;*.tif;*.webp" + std::string("|") + supportedFormats,
 			clear_bsd = "Redistribution and use in source and binary forms, with or without "
 			"modification, are permitted (subject to the limitations in the disclaimer "
 			"below) provided that the following conditions are met:\n\n"

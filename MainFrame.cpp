@@ -155,7 +155,7 @@ void MainFrame::LoadImage(wxString filePath) {
         }
     }
 
-    else if (fileName.GetExt() == "jp2" || fileName.GetExt() == "jpf") {
+    else if (fileName.GetExt() == "jp2" || fileName.GetExt() == "jpf" || fileName.GetExt() == "jpx" || fileName.GetExt() == "j2c" || fileName.GetExt() == "j2k") {
         img = Codec::LoadJP2(filePath);
 
         if (img.IsOk()) {

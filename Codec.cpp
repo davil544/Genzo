@@ -157,19 +157,19 @@ wxImage Codec::LoadJP2(const wxString& filePath) {
 
     wxFileInputStream jp2Stream(filePath);
     if (!jp2Stream.IsOk()) {
-        wxLogError("Failed to open JP2 file: %s", filePath);
+        wxLogError("Failed to open JPEG 2000 file: %s", filePath);
         return empty;
     }
 
     size_t dataSize = jp2Stream.GetLength();
     if (dataSize == 0) {
-        wxLogError("JP2 file is empty: %s", filePath);
+        wxLogError("JPEG 2000 file is empty: %s", filePath);
         return empty;
     }
 
     wxMemoryBuffer buffer(dataSize);
     if (jp2Stream.Read(buffer.GetData(), dataSize).LastRead() != dataSize) {
-        wxLogError("Failed to read JP2 file into memory: %s", filePath);
+        wxLogError("Failed to read JPEG 2000 file into memory: %s", filePath);
         return empty;
     }
 
@@ -177,15 +177,41 @@ wxImage Codec::LoadJP2(const wxString& filePath) {
 
     wxImage img = Codec::DecodeJP2(data, dataSize);
     if (!img.IsOk()) {
-        wxLogError("OpenJPEG failed to decode JP2 file: %s", filePath);
+        wxLogError("OpenJPEG failed to decode JPEG 2000 file: %s", filePath);
         return empty;
     }
 
     return img;
 }
 
-wxImage Codec::DecodeJP2(const unsigned char* data, size_t size) {
+static OPJ_CODEC_FORMAT DetectJP2Format(const unsigned char* data, size_t size)
+{
+    if (size >= 12 &&
+        data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x0C &&
+        data[4] == 0x6A && data[5] == 0x50 && data[6] == 0x20 && data[7] == 0x20)
+    {
+        return OPJ_CODEC_JP2; // .jp2 / .jpf
+    }
+
+    if (size >= 4 &&
+        data[0] == 0xFF && data[1] == 0x4F &&
+        data[2] == 0xFF && data[3] == 0x51)
+    {
+        return OPJ_CODEC_J2K; // .j2c / .j2k raw codestream
+    }
+
+    return OPJ_CODEC_UNKNOWN;
+}
+
+wxImage Codec::DecodeJP2(const unsigned char* data, size_t size)
+{
     wxImage empty;
+
+    OPJ_CODEC_FORMAT format = DetectJP2Format(data, size);
+    if (format == OPJ_CODEC_UNKNOWN) {
+        wxLogError("Unrecognized JPEG 2000 stream: no JP2 box or J2K codestream signature found.");
+        return empty;
+    }
 
     opj_dparameters_t params;
     opj_set_default_decoder_parameters(&params);
@@ -193,21 +219,25 @@ wxImage Codec::DecodeJP2(const unsigned char* data, size_t size) {
     opj_stream_t* stream = opj_stream_create(size, true);
     if (!stream) return empty;
 
-    opj_stream_set_user_data(stream, (void*)data, nullptr);
-    opj_stream_set_user_data_length(stream, size);
+    unsigned char* readPtr = const_cast<unsigned char*>(data);
+    const unsigned char* dataEnd = data + size;
 
     opj_stream_set_read_function(stream,
         [](void* p_buffer, size_t p_nb_bytes, void* p_user_data) -> size_t {
-            unsigned char*& ptr = *(unsigned char**)p_user_data;
-            memcpy(p_buffer, ptr, p_nb_bytes);
-            ptr += p_nb_bytes;
-            return p_nb_bytes;
+            auto* ctx = static_cast<std::pair<unsigned char*, const unsigned char*>*>(p_user_data);
+            size_t remaining = static_cast<size_t>(ctx->second - ctx->first);
+            size_t toRead = std::min(p_nb_bytes, remaining);
+            if (toRead == 0) return static_cast<size_t>(-1);
+            memcpy(p_buffer, ctx->first, toRead);
+            ctx->first += toRead;
+            return toRead;
         });
 
-    unsigned char* readPtr = const_cast<unsigned char*>(data);
-    opj_stream_set_user_data(stream, &readPtr, nullptr);
+    std::pair<unsigned char*, const unsigned char*> readCtx(readPtr, dataEnd);
+    opj_stream_set_user_data(stream, &readCtx, nullptr);
+    opj_stream_set_user_data_length(stream, size);
 
-    opj_codec_t* codec = opj_create_decompress(OPJ_CODEC_JP2);
+    opj_codec_t* codec = opj_create_decompress(format);
     if (!codec) {
         opj_stream_destroy(stream);
         return empty;
