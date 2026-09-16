@@ -1,0 +1,36 @@
+name: C++ SAST
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  flawfinder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Flawfinder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flawfinder
+
+      - name: Run Flawfinder
+        continue-on-error: true
+        run: |
+          flawfinder \
+            --sarif \
+            --quiet \
+            --dataonly \
+            . > flawfinder_results.sarif
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: flawfinder_results.sarif
