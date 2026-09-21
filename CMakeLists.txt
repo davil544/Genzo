@@ -11,6 +11,9 @@ endif()
 
 project ("Genzo")
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg.json" VCPKG_JSON_DATA)
+string(JSON PROJECT_VERSION_FROM_VCPKG GET "${VCPKG_JSON_DATA}" "version-string")
+
 if(APPLE)
     message(STATUS "Configuring Genzo as a macOS .app bundle")
 
@@ -42,6 +45,8 @@ add_custom_command(
          "$<TARGET_FILE_DIR:Genzo>/third-party-licenses"
      COMMENT "Copying third party license folder to executable build directory..."
 )
+
+target_compile_definitions(Genzo PRIVATE "APP_VERSION=\"${PROJECT_VERSION_FROM_VCPKG}\"")
 
 # Path to wxWidgets for compiling on Windows, set by user environment variable WXWIN
 if(WIN32)

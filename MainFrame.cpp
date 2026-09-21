@@ -12,6 +12,10 @@
     #include "genzo.xpm" 
 #endif
 
+#ifndef APP_VERSION
+    #define APP_VERSION "Unknown"
+#endif
+
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
     wxInitAllImageHandlers();
     CreateMenuBar();
@@ -296,7 +300,7 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
     titleText->SetFont(headlineFont);
 
     wxStaticText* subText = new wxStaticText(&aboutDialog, wxID_ANY,
-        "Version 1.0.0\nCreated by Dylan Aviles",
+        "Version " APP_VERSION "\nCreated by Dylan Aviles",
         wxDefaultPosition, wxDefaultSize,
         wxALIGN_CENTRE_HORIZONTAL);
 

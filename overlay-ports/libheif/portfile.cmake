@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO strukturag/libheif
-    REF "v1.23.1"
-    SHA512 ebb0bf74d6d1ae2d39a7cefcec0f4a04006fee330e147c49c863f6d4febb45e82ccebf36cc4e30812bd3591918ee8964fbde9a3a4793c5f60eaf30a0e011add0
+    REF "v1.23.4"
+    SHA512 f33b216fd550ad1f7d65c76977bea77e4447875e1c84a868d620406bc2530ce8425e781e8052f4cddab49b87e2a6184a58edcd3782bb12ec6414a99bf8663e58
     HEAD_REF main
 )
 
