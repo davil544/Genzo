@@ -310,9 +310,10 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
     libraryOptions.Add("libheif");
     libraryOptions.Add("aom");
     libraryOptions.Add("dav1d");
+    libraryOptions.Add("kvazaar");
     libraryOptions.Add("libjpeg-turbo");
-    libraryOptions.Add("giflib");
     libraryOptions.Add("libwebp");
+    libraryOptions.Add("openjpeg");
 
     wxChoice* libChoice = new wxChoice(&aboutDialog, wxID_ANY, wxDefaultPosition, wxDefaultSize, libraryOptions);
     libChoice->SetSelection(0);
@@ -347,15 +348,19 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
                 break;
 
             case 5:
-                lib = "libjpeg-turbo";
+                lib = "kvazaar";
                 break;
 
             case 6:
-                lib = "giflib";
+                lib = "libjpeg-turbo";
                 break;
 
             case 7:
                 lib = "libwebp";
+                break;
+
+            case 8:
+                lib = "openjpeg";
                 break;
 
             default:
