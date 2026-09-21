@@ -74,6 +74,13 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}\build-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
 
+    - name: Update vcpkg baseline
+      shell: bash
+      run: |
+        cd "$VCPKG_INSTALLATION_ROOT"
+        git fetch --all
+        git pull
+
     - name: Configure CMake
       shell: bash
       run: |
