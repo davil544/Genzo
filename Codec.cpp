@@ -184,13 +184,12 @@ wxImage Codec::LoadJP2(const wxString& filePath) {
     return img;
 }
 
-static OPJ_CODEC_FORMAT DetectJP2Format(const unsigned char* data, size_t size)
-{
+static OPJ_CODEC_FORMAT DetectJP2Format(const unsigned char* data, size_t size) {
     if (size >= 12 &&
         data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x0C &&
         data[4] == 0x6A && data[5] == 0x50 && data[6] == 0x20 && data[7] == 0x20)
     {
-        return OPJ_CODEC_JP2; // .jp2 / .jpf
+        return OPJ_CODEC_JP2; // .jp2 / .jpf / .jpx (shared box container)
     }
 
     if (size >= 4 &&
@@ -203,8 +202,7 @@ static OPJ_CODEC_FORMAT DetectJP2Format(const unsigned char* data, size_t size)
     return OPJ_CODEC_UNKNOWN;
 }
 
-wxImage Codec::DecodeJP2(const unsigned char* data, size_t size)
-{
+wxImage Codec::DecodeJP2(const unsigned char* data, size_t size) {
     wxImage empty;
 
     OPJ_CODEC_FORMAT format = DetectJP2Format(data, size);
@@ -295,6 +293,145 @@ wxImage Codec::DecodeJP2(const unsigned char* data, size_t size)
     return img;
 }
 
+// Builds an opj_image_t (3 or 4 x 8-bit components) from a wxImage.
+// Caller owns the returned image and must opj_image_destroy() it.
+static opj_image_t* CreateOPJImageFromWx(const wxImage& img) {
+    int width = img.GetWidth();
+    int height = img.GetHeight();
+    bool hasAlpha = img.HasAlpha();
+    int numComps = hasAlpha ? 4 : 3;
+
+    opj_image_cmptparm_t cmptparm[4];
+    memset(cmptparm, 0, sizeof(cmptparm));
+    for (int i = 0; i < numComps; ++i) {
+        cmptparm[i].dx = 1;
+        cmptparm[i].dy = 1;
+        cmptparm[i].w = width;
+        cmptparm[i].h = height;
+        cmptparm[i].x0 = 0;
+        cmptparm[i].y0 = 0;
+        cmptparm[i].prec = 8;
+        cmptparm[i].bpp = 8;
+        cmptparm[i].sgnd = 0;
+    }
+
+    opj_image_t* image = opj_image_create(numComps, cmptparm, OPJ_CLRSPC_SRGB);
+    if (!image) return nullptr;
+
+    image->x0 = 0;
+    image->y0 = 0;
+    image->x1 = width;
+    image->y1 = height;
+
+    const unsigned char* rgb = img.GetData();
+    const unsigned char* alpha = hasAlpha ? img.GetAlpha() : nullptr;
+
+    int pixelCount = width * height;
+    for (int i = 0; i < pixelCount; ++i) {
+        image->comps[0].data[i] = rgb[i * 3 + 0];
+        image->comps[1].data[i] = rgb[i * 3 + 1];
+        image->comps[2].data[i] = rgb[i * 3 + 2];
+        if (hasAlpha) {
+            image->comps[3].data[i] = alpha[i];
+        }
+    }
+
+    return image;
+}
+
+// Writes a wxImage as JP2 (.jp2/.jpf, boxed format) or raw codestream
+// (.j2k/.j2c), chosen by the output file's extension. quality is 1-100;
+// 100 requests lossless encoding, anything lower is treated as a
+// compression-ratio target (lower quality = smaller/lossier file).
+bool Codec::SaveJP2(const wxImage& img, const wxString& filePath, int quality) {
+    if (!img.IsOk()) {
+        wxLogError("Invalid wxImage passed to SaveJP2.");
+        return false;
+    }
+
+    quality = std::clamp(quality, 1, 100);
+
+    wxFileName fileName(filePath);
+    fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);
+    wxString ext = fileName.GetExt().Lower();
+
+    OPJ_CODEC_FORMAT format =
+        (ext == "j2k" || ext == "j2c") ? OPJ_CODEC_J2K : OPJ_CODEC_JP2;
+
+    opj_image_t* image = CreateOPJImageFromWx(img);
+    if (!image) {
+        wxLogError("Failed to build OpenJPEG image from wxImage.");
+        return false;
+    }
+
+    opj_cparameters_t params;
+    opj_set_default_encoder_parameters(&params);
+
+    // Single quality layer. quality == 100 -> lossless (reversible 5-3
+    // wavelet, no rate cap). Otherwise -> lossy with a rate target derived
+    // from quality (roughly: lower quality => higher compression ratio).
+    params.tcp_numlayers = 1;
+    params.cp_disto_alloc = 1;
+
+    if (quality >= 100) {
+        params.irreversible = 0;
+        params.tcp_rates[0] = 0; // 0 = lossless in OpenJPEG's convention
+    }
+    else {
+        params.irreversible = 1; // 9-7 wavelet, needed for lossy
+        // Map 1-99 -> a compression ratio roughly between 40:1 and ~1.1:1.
+        double ratio = 1.0 + (100 - quality) * 0.4;
+        params.tcp_rates[0] = static_cast<float>(ratio);
+    }
+
+    opj_codec_t* codec = opj_create_compress(format);
+    if (!codec) {
+        wxLogError("Failed to create OpenJPEG encoder.");
+        opj_image_destroy(image);
+        return false;
+    }
+
+    if (!opj_setup_encoder(codec, &params, image)) {
+        wxLogError("Failed to set up OpenJPEG encoder.");
+        opj_destroy_codec(codec);
+        opj_image_destroy(image);
+        return false;
+    }
+
+    opj_stream_t* stream = opj_stream_create_default_file_stream(
+        filePath.utf8_str(), OPJ_FALSE /* write stream */);
+    if (!stream) {
+        wxLogError("Failed to open output stream for: %s", filePath);
+        opj_destroy_codec(codec);
+        opj_image_destroy(image);
+        return false;
+    }
+
+    bool success = false;
+    if (!opj_start_compress(codec, image, stream)) {
+        wxLogError("opj_start_compress failed for: %s", filePath);
+    }
+    else if (!opj_encode(codec, stream)) {
+        wxLogError("opj_encode failed for: %s", filePath);
+    }
+    else if (!opj_end_compress(codec, stream)) {
+        wxLogError("opj_end_compress failed for: %s", filePath);
+    }
+    else {
+        success = true;
+    }
+
+    opj_stream_destroy(stream);
+    opj_destroy_codec(codec);
+    opj_image_destroy(image);
+
+    if (success) {
+        wxLogMessage("JPEG 2000 file successfully written: %s", filePath);
+    }
+
+    return success;
+}
+
 wxImage Codec::LoadICNS(const wxString& filePath) {
     wxImage empty;
 
@@ -339,8 +476,7 @@ wxImage Codec::LoadICNS(const wxString& filePath) {
     long bestPixels = 0;
 
     size_t offset = 8;
-    while (offset + 8 <= totalSize)
-    {
+    while (offset + 8 <= totalSize) {
         const unsigned char* chunkHeader = data + offset;
         char type[5] = { 0 };
         memcpy(type, chunkHeader, 4);
@@ -432,8 +568,7 @@ static wxImage ScaleWithTransparentPadding(const wxImage& src, int targetSize) {
     int offsetX = (targetSize - scaledW) / 2;
     int offsetY = (targetSize - scaledH) / 2;
 
-    for (int y = 0; y < scaledH; ++y)
-    {
+    for (int y = 0; y < scaledH; ++y) {
         int dstY = offsetY + y;
         if (dstY < 0 || dstY >= targetSize) continue;
 
@@ -488,8 +623,7 @@ bool Codec::SaveICNS(const wxImage& img, const wxString& filePath)
 
     uint32_t totalSize = 8;
 
-    for (const auto& icon : icons)
-    {
+    for (const auto& icon : icons) {
         wxImage scaled = ScaleWithTransparentPadding(img, icon.size);
 
         wxMemoryOutputStream pngStream;

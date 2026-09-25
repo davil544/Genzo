@@ -229,6 +229,9 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
             else if (fileName.GetExt() == "icns") {
                 successful = Codec::SaveICNS(img, filePath);
             }
+            else if (fileName.GetExt() == "jp2" || fileName.GetExt() == "jpf" || fileName.GetExt() == "jpx" || fileName.GetExt() == "j2k" || fileName.GetExt() == "j2c") {
+                successful = Codec::SaveJP2(img, filePath, 100);
+            }
             else if (img.SaveFile(filePath)) {
                 //wxLogMessage("Image successfully saved to %s", filePath);
                 successful = true;
@@ -247,7 +250,7 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
         }
         
         // TODO: Figure out how to append file extension on Linux, does not happen by default for some reason
-        // TODO: Figure out how to preserve metadata during conversion
+        // TODO: Figure out how to preserve EXIF metadata during conversion
         //wxMessageBox(wxString::Format("File converted and saved as: %s", filePath), _("Info"));
     }
     else {
