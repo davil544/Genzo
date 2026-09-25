@@ -6,7 +6,6 @@
 #include <wx/aboutdlg.h>
 #include <wx/textfile.h>
 #include <wx/stdpaths.h>
-//#include <wx/imaggif.h>
 
 #ifdef __WXGTK__
     #include "genzo.xpm" 
