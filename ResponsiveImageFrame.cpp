@@ -2,8 +2,8 @@
 #include <wx/graphics.h>
 #include <algorithm>
 
-ResponsiveImageFrame::ResponsiveImageFrame(const wxString& title, const wxImage& image)
-    : wxFrame(nullptr, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE)
+ResponsiveImageFrame::ResponsiveImageFrame(wxWindow* parent, const wxString& title, const wxImage& image)
+    : wxFrame(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE)
 {
     m_bitmap = wxBitmap(image);
 
@@ -52,12 +52,12 @@ void ResponsiveImageFrame::OnPaint(wxPaintEvent& event) {
     }
 }
 
-void ShowStandaloneImage(const wxImage& image) {
+void ShowStandaloneImage(wxWindow* parent, const wxImage& image) {
     if (!image.IsOk()) {
         wxMessageBox("The provided image is invalid.", "Error", wxICON_ERROR | wxOK);
         return;
     }
 
-    ResponsiveImageFrame* frame = new ResponsiveImageFrame("Image Viewer", image);
+    ResponsiveImageFrame* frame = new ResponsiveImageFrame(parent, "Image Viewer", image);
     frame->Show(true);
 }
