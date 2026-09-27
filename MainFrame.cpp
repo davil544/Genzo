@@ -184,7 +184,7 @@ void MainFrame::LoadImage(wxString filePath) {
     wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s", filePath, size), _("Info"));
 
     // TODO: Use this to show an image preview in the main window eventually
-    ShowStandaloneImage(this, img);
+    ShowStandaloneImage(this, img, previewFrame);
 }
 
 void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
@@ -263,7 +263,7 @@ void MainFrame::OnButtonPreviewClick(wxCommandEvent& event) {
     if (!img.IsOk() && path != "") {
         LoadImage(path);
     }
-    ShowStandaloneImage(this, img);
+    ShowStandaloneImage(this, img, previewFrame);
 }
 
 void MainFrame::OnTextChange(wxCommandEvent& event) {

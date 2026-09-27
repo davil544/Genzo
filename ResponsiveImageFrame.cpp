@@ -2,9 +2,13 @@
 #include <wx/graphics.h>
 #include <algorithm>
 
-ResponsiveImageFrame::ResponsiveImageFrame(wxWindow* parent, const wxString& title, const wxImage& image)
+ResponsiveImageFrame::ResponsiveImageFrame(wxFrame* parent, const wxString& title, const wxImage& image)
     : wxFrame(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE)
 {
+    if (parent && parent->GetIcon().IsOk()) {
+        SetIcon(parent->GetIcon());
+    }
+
     m_bitmap = wxBitmap(image);
 
     m_panel = new wxPanel(this, wxID_ANY);
@@ -52,12 +56,29 @@ void ResponsiveImageFrame::OnPaint(wxPaintEvent& event) {
     }
 }
 
-void ShowStandaloneImage(wxWindow* parent, const wxImage& image) {
+void ShowStandaloneImage(wxFrame* parent, const wxImage& image, ResponsiveImageFrame*& previewFrame) {
     if (!image.IsOk()) {
         wxMessageBox("The provided image is invalid.", "Error", wxICON_ERROR | wxOK);
         return;
     }
 
-    ResponsiveImageFrame* frame = new ResponsiveImageFrame(parent, "Image Viewer", image);
-    frame->Show(true);
+    if (previewFrame) {
+        previewFrame->UpdateImage(image);
+        previewFrame->Raise();
+    }
+    else {
+        previewFrame = new ResponsiveImageFrame(parent, "Image Viewer", image);
+        previewFrame->Bind(wxEVT_CLOSE_WINDOW, [&previewFrame](wxCloseEvent& event) {
+            previewFrame = nullptr;
+            event.Skip();
+            });
+        previewFrame->Show(true);
+    }
+}
+
+void ResponsiveImageFrame::UpdateImage(const wxImage& image) {
+    if (!image.IsOk()) return;
+
+    m_bitmap = wxBitmap(image);
+    m_panel->Refresh();
 }

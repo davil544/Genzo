@@ -1,5 +1,6 @@
 #pragma once
 #include <wx/wx.h>
+#include "ResponsiveImageFrame.h"
 
 class MainFrame : public wxFrame
 {
@@ -68,4 +69,5 @@ class MainFrame : public wxFrame
 		void OnPathEnter(wxCommandEvent& event);
 		void OnTextChange(wxCommandEvent& event);
 		wxString LoadTextFromFile(const wxString& filePath);
+		ResponsiveImageFrame* previewFrame = nullptr;
 };

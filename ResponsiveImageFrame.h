@@ -3,7 +3,8 @@
 
 class ResponsiveImageFrame : public wxFrame {
 public:
-    ResponsiveImageFrame(wxWindow* parent, const wxString& title, const wxImage& image);
+    ResponsiveImageFrame(wxFrame* parent, const wxString& title, const wxImage& image);
+    void UpdateImage(const wxImage& image);
 
 private:
     wxBitmap m_bitmap;
@@ -13,4 +14,4 @@ private:
     void OnPaint(wxPaintEvent& event);
 };
 
-void ShowStandaloneImage(wxWindow* parent, const wxImage& image);
+void ShowStandaloneImage(wxFrame* parent, const wxImage& image, ResponsiveImageFrame*& previewFrame);
