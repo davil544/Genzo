@@ -108,7 +108,7 @@
         "VCPKG_OVERLAY_PORTS": "${sourceDir}/overlay-ports",
         "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_MAKE_PROGRAM": "/usr/local/bin/ninja",
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "26.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0"
       },
       "condition": {
         "type": "equals",

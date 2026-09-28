@@ -44,19 +44,6 @@ jobs:
         "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
         echo "VCPKG_FEATURE_FLAGS=-binarycaching" >> "$GITHUB_ENV"
 
-    - name: Patch CMakePresets.json for CI (runner copy only)
-      run: |
-        python3 - <<'EOF'
-        import json
-        with open("CMakePresets.json") as f:
-            data = json.load(f)
-        for p in data["configurePresets"]:
-            if p["name"] == "macos-base":
-                p.setdefault("cacheVariables", {})["CMAKE_OSX_DEPLOYMENT_TARGET"] = "15.0"
-        with open("CMakePresets.json", "w") as f:
-            json.dump(data, f, indent=2)
-        EOF
-
     - name: Configure CMake
       run: cmake --preset macos-universal-release
 
