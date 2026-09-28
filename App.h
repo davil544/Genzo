@@ -5,4 +5,7 @@ class App : public wxApp
 {
 public:
 	bool OnInit();
+	
+private:
+	int OnExit() override;
 };
