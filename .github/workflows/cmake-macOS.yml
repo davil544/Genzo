@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+env:
+  VCPKG_ROOT: /Users/runner/vcpkg
+
 jobs:
   build:
     name: build (${{ matrix.os }}, ${{ matrix.c_compiler }})
@@ -23,84 +26,58 @@ jobs:
           cpp_compiler: clang++
           build_type: Release
 
-        - os: macos-15-intel
-          arch: x64
-          c_compiler: clang
-          cpp_compiler: clang++
-          build_type: Release
-
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install macOS Dependencies
+    - name: Install macOS dependencies
       run: |
-        brew install wxwidgets nasm autoconf automake libtool
-        echo "/opt/homebrew/bin" >> $GITHUB_PATH
+        brew install ninja nasm autoconf automake libtool pkg-config
 
-    - name: Set isolated vcpkg root
+    - name: Make Ninja available where the presets expect it
       run: |
-        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg-${{ matrix.os }}-${{ matrix.c_compiler }}" >> "$GITHUB_ENV"
+        sudo mkdir -p /usr/local/bin
+        sudo ln -sf /opt/homebrew/bin/ninja /usr/local/bin/ninja
 
     - name: Bootstrap vcpkg
       run: |
-        rm -rf "$VCPKG_ROOT"
         git clone --recursive https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
         "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
-
-    - name: Disable vcpkg binary caching
-      run: |
         echo "VCPKG_FEATURE_FLAGS=-binarycaching" >> "$GITHUB_ENV"
 
-    - name: Remove community triplet override and symlink official osx triplet
+    - name: Patch CMakePresets.json for CI (runner copy only)
       run: |
-        rm -f "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx.cmake"
-
-        if [ -f "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx-release.cmake" ]; then
-            mkdir -p "$VCPKG_ROOT/triplets/community"
-            ln -sf "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx-release.cmake" \
-                   "$VCPKG_ROOT/triplets/community/${{ matrix.arch }}-osx.cmake"
-        else
-            echo "Community ${{ matrix.arch }}-osx-release triplet not found!"
-            ls "$VCPKG_ROOT/triplets"
-        fi
+        python3 - <<'EOF'
+        import json
+        with open("CMakePresets.json") as f:
+            data = json.load(f)
+        for p in data["configurePresets"]:
+            if p["name"] == "macos-base":
+                p.setdefault("cacheVariables", {})["CMAKE_OSX_DEPLOYMENT_TARGET"] = "15.0"
+        with open("CMakePresets.json", "w") as f:
+            json.dump(data, f, indent=2)
+        EOF
 
     - name: Configure CMake
-      run: |
-        WX_CONFIG=$(which wx-config)
-        WX_ROOT=$(dirname $(dirname $WX_CONFIG))
-
-        echo "WX_CONFIG = $WX_CONFIG"
-        echo "WX_ROOT = $WX_ROOT"
-
-        cmake -G "Unix Makefiles" \
-              -B build \
-              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
-              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-              -DVCPKG_OVERLAY_PORTS="${{ github.workspace }}/overlay-ports" \
-              -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-osx \
-              -DVCPKG_HOST_TRIPLET=${{ matrix.arch }}-osx \
-              -DwxWidgets_CONFIG_EXECUTABLE="$WX_CONFIG" \
-              -DwxWidgets_ROOT_DIR="$WX_ROOT" \
-              -S .
+      run: cmake --preset macos-universal-release
 
     - name: Upload vcpkg failure logs
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: vcpkg-logs-${{ matrix.os }}-${{ matrix.c_compiler }}
+        name: vcpkg-logs-macos-universal
         path: |
-          ${{ github.workspace }}/build/vcpkg-manifest-install.log
-          ${{ github.workspace }}/build/vcpkg_installed/**/*.log
-          ${{ github.workspace }}/build/vcpkg_installed/**/issue_body.md
+          ${{ github.workspace }}/out/build/*/vcpkg-manifest-install.log
+          ${{ github.workspace }}/out/build/*/vcpkg_installed/**/*.log
+          ${{ github.workspace }}/out/build/*/vcpkg_installed/**/issue_body.md
           ${{ env.VCPKG_ROOT }}/buildtrees/**/*.log
-          ${{ env.VCPKG_ROOT }}/buildtrees/kvazaar/src/**/*
         retention-days: 3
 
-    - name: Build
-      run: cmake --build build --config ${{ matrix.build_type }}
+    - name: Build (arm64 + nested x86_64 + lipo)
+      run: cmake --build out/build/macos-universal-release
+
+    - name: Verify universal binary
+      run: |
+        lipo -info out/build/macos-universal-release/Genzo.app/Contents/MacOS/Genzo
 
     - name: Test
-      working-directory: build
-      run: ctest --build-config ${{ matrix.build_type }}
+      run: ctest --test-dir out/build/macos-universal-release --no-tests=ignore --output-on-failure

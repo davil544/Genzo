@@ -28,6 +28,15 @@ if(APPLE)
         PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
     target_sources(Genzo PRIVATE ${CMAKE_SOURCE_DIR}/Genzo.icns)
+    set_target_properties(Genzo PROPERTIES
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.dylanspcrepairs.genzo"
+    MACOSX_BUNDLE_BUNDLE_NAME "Genzo"
+    MACOSX_BUNDLE_INFO_STRING "Genzo Image Converter"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_FROM_VCPKG}"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION_FROM_VCPKG}"
+    MACOSX_BUNDLE_COPYRIGHT "Copyright © 2026 Dylan Aviles, All Rights Reserved"
+)
+
 else()
     add_executable(Genzo WIN32
         "App.cpp" "App.h"
@@ -35,6 +44,37 @@ else()
         "Codec.cpp" "Codec.h"
         "app_resources.rc"
         "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h"
+    )
+endif()
+
+if(APPLE AND GENZO_BUILD_UNIVERSAL)
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" _bt)
+    set(_x64_preset macos-x64-${_bt})
+    set(_x64_dir ${CMAKE_SOURCE_DIR}/out/build/${_x64_preset})
+    set(_x64_exe ${_x64_dir}/Genzo.app/Contents/MacOS/Genzo)
+
+    add_custom_target(genzo_x64 ALL
+        COMMENT "Building x86_64 slice with preset: ${_x64_preset}"
+        COMMAND ${CMAKE_COMMAND} --preset ${_x64_preset}
+        COMMAND ${CMAKE_COMMAND} --build ${_x64_dir} --target Genzo
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        VERBATIM
+    )
+
+    add_custom_target(genzo_universal ALL
+        COMMENT "Creating universal Genzo.app"
+        COMMAND ${CMAKE_COMMAND} -E echo "Merging arm64 + x86_64 slices"
+        COMMAND ${CMAKE_COMMAND} -E echo "arm64 slice: $<TARGET_FILE:Genzo>"
+        COMMAND ${CMAKE_COMMAND} -E echo "x86_64 slice: ${_x64_exe}"
+        COMMAND lipo -create -output $<TARGET_FILE:Genzo>.universal ${_x64_exe} $<TARGET_FILE:Genzo>
+        COMMAND ${CMAKE_COMMAND} -E echo "Replacing original binary with universal binary"
+        COMMAND ${CMAKE_COMMAND} -E rename $<TARGET_FILE:Genzo>.universal $<TARGET_FILE:Genzo>
+        COMMAND ${CMAKE_COMMAND} -E echo "Codesigning final Genzo.app bundle"
+        COMMAND codesign --force --deep --sign - $<TARGET_BUNDLE_DIR:Genzo>
+        COMMAND ${CMAKE_COMMAND} -E echo "Universal binary build complete"
+        DEPENDS Genzo genzo_x64
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        VERBATIM
     )
 endif()
 

@@ -15,6 +15,9 @@ vcpkg_cmake_configure(
         -DWITH_LIBDE265=ON
         -DENABLE_PLUGIN_LOADING=OFF
         -DBUILD_TESTING=OFF
+        "-DCMAKE_DISABLE_FIND_PACKAGE_JPEG=ON"
+        "-DCMAKE_DISABLE_FIND_PACKAGE_PNG=ON"
+        "-DCMAKE_DISABLE_FIND_PACKAGE_TIFF=ON"
 )
 
 vcpkg_cmake_install()

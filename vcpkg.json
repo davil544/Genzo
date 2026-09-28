@@ -1,10 +1,14 @@
 {
   "name": "genzo",
-  "version-string": "1.0.1",
+  "version-string": "1.1.0",
   "dependencies": [
     {
       "name": "libheif",
       "features": ["aom", "kvazaar"]
+    },
+    {
+      "name": "wxwidgets",
+      "platform": "osx"
     },
     "dav1d",
     "libjpeg-turbo",
@@ -20,6 +24,18 @@
     {
       "name": "libwebp",
       "version": "1.6.0#2"
+    },
+    {
+      "name": "wxwidgets",
+      "version": "3.3.3"
+    },
+    {
+      "name": "expat",
+      "version": "2.8.3"
+    },
+    {
+      "name": "liblzma",
+      "version": "5.8.3"
     }
   ]
 }
