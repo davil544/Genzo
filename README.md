@@ -27,7 +27,15 @@ Genzo currently supports the following image formats:
     <td>Decode Only</td>
   </tr>
   <tr>
+    <td>GIF (Graphics Interchange Format)</td>
+    <td>Encode & Decode (Static Images Only)</td>
+  </tr>
+  <tr>
     <td>HEIF/HEIC (High-Efficiency Image Format)</td>
+    <td>Encode & Decode</td>
+  </tr>
+  <tr>
+    <td>ICNS (Apple Icon Image Format)</td>
     <td>Encode & Decode</td>
   </tr>
   <tr>
@@ -39,7 +47,15 @@ Genzo currently supports the following image formats:
     <td>Encode & Decode</td>
   </tr>
   <tr>
+    <td>JP2/JPF/JPX/J2C/J2K (JPEG 2000)</td>
+    <td>Encode & Decode</td>
+  </tr>
+  <tr>
     <td>PNG (Portable Network Graphics)</td>
+    <td>Encode & Decode</td>
+  </tr>
+  <tr>
+    <td>TGA/TARGA/ICB/VDA/VST/TPIC (Truevision Advanced Raster Graphics Adapter)</td>
     <td>Encode & Decode</td>
   </tr>
   <tr>
@@ -48,6 +64,10 @@ Genzo currently supports the following image formats:
   </tr>
   <tr>
     <td>WEBP (Web Picture Format)</td>
+    <td>Encode & Decode</td>
+  </tr>
+  <tr>
+    <td>XPM (X PixMap)</td>
     <td>Encode & Decode</td>
   </tr>
 </table>

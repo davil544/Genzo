@@ -221,15 +221,19 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
         // TODO: considering adding a progress bar, maybe separating the conversion process into another thread to so the UI doesn't freeze during conversion?
         if (img.IsOk()) {
             wxLogStatus("Converting image, please wait...");
+            wxString ext = fileName.GetExt().Lower();
             bool successful = false;
-            if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
+            if (ext == "heic" || ext == "heif" || ext == "avif") {
                 successful = Codec::SaveHEIFImage(img, filePath);
             }
-            else if (fileName.GetExt() == "icns") {
+            else if (ext == "icns") {
                 successful = Codec::SaveICNS(img, filePath);
             }
-            else if (fileName.GetExt() == "jp2" || fileName.GetExt() == "jpf" || fileName.GetExt() == "jpx" || fileName.GetExt() == "j2k" || fileName.GetExt() == "j2c") {
+            else if (ext == "jp2" || ext == "jpf" || ext == "jpx" || ext == "j2k" || ext == "j2c") {
                 successful = Codec::SaveJP2(img, filePath, 100);
+            }
+            else if (ext == "tga" || ext == "targa" || ext == "icb" || ext == "vda" || ext == "vst" || ext == "tpic") {
+                successful = img.SaveFile(filePath, wxBITMAP_TYPE_TGA);
             }
             else if (img.SaveFile(filePath)) {
                 //wxLogMessage("Image successfully saved to %s", filePath);

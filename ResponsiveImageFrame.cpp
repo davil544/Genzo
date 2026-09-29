@@ -1,6 +1,5 @@
 #include "ResponsiveImageFrame.h"
 #include <wx/graphics.h>
-#include <algorithm>
 
 ResponsiveImageFrame::ResponsiveImageFrame(wxFrame* parent, const wxString& title, const wxImage& image)
     : wxFrame(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE)
