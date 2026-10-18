@@ -1,6 +1,7 @@
 #pragma once
 #include <wx/wx.h>
 #include "ResponsiveImageFrame.h"
+#include "Metadata.h"
 
 class MainFrame : public wxFrame
 {
@@ -17,6 +18,7 @@ class MainFrame : public wxFrame
 		wxStaticText *headerText, *subheaderText, *lblOutputFormat;
 		wxButton *btnBrowse, *btnConvert, *btnPreview;
 		wxImage img;
+		MetadataBlobs sourceMetadata; // Exif / IPTC / XMP read from the loaded file, carried across on Save/Convert if requested
 		const wxString strWelcome = "Welcome to the Genzo Image Converter!  Please select a file to get started.",
 			avif = "AVIF (*.avif)|*.avif", bmp = "BMP (*.bmp)|*.bmp", gif = "GIF (*.gif)|*.gif", heic = "HEIF (*.heif; *.heic)|*.heif; *.heic", ico = "ICO (*.ico)|*.ico", icns = "ICNS (*.icns)|*.icns", jpg = "JPEG (*.jpg;*.jpeg;*.jpe;*.jfif)|*.jpg;*.jpeg;*.jpe;*.jfif",
 			jpeg2k = "JPEG-2000 (*.jp2; *.jpf; *.jpx; *.j2k; *.j2c)|*.jp2;*.jpf;*.jpx;*.j2k;*.j2c", png = "PNG (*.png)|*.png", tga = "TARGA (*.tga;*.targa;*.icb;*.vda;*.vst;*.tpic)|*.tga;*.targa;*.icb;*.vda;*.vst;*.tpic", tiff = "TIFF (*.tiff; *.tif)|*.tiff;*.tif", webp = "WEBP (*.webp) | *.webp", xpm = "XPM (*.xpm)|*.xpm", all = "All files (*.*)|*.*",

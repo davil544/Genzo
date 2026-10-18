@@ -45,7 +45,7 @@ jobs:
     - name: Install Linux Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libwxgtk3.2-dev cmake make ninja-build build-essential pkg-config python3 nasm autoconf automake libtool
+        sudo apt-get install -y libwxgtk3.2-dev libgtk-3-dev cmake make ninja-build build-essential pkg-config python3 nasm autoconf automake libtool
 
         if [ ! -f /usr/local/bin/ninja ]; then
           sudo ln -s "$(command -v ninja)" /usr/local/bin/ninja

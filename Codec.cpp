@@ -6,7 +6,7 @@
 #include <wx/image.h>
 #include <libheif/heif.h>
 #include <openjpeg.h>
-
+//TODO: Figure out why I cant save gif files
 wxImage Codec::LoadHEIFImage(const wxString& filepath) {
     wxImage emptyImage;
 
@@ -61,7 +61,27 @@ wxImage Codec::LoadHEIFImage(const wxString& filepath) {
     return wxImage(width, height, wxData);
 }
 
-bool Codec::SaveHEIFImage(const wxImage& img, const wxString& filePath, int quality) {
+// Attaches the raw Exif / XMP blobs to an image that has just been encoded into `ctx`.
+// Failure here is not fatal: the picture is still good, it just won't carry that metadata.
+static void AttachHeifMetadata(heif_context* ctx, const heif_image_handle* handle, const MetadataBlobs& md) {
+    if (!md.exif.empty()) {
+        // libheif finds the TIFF header itself and adds the 4-byte offset prefix HEIF wants.
+        heif_error e = heif_context_add_exif_metadata(ctx, handle, md.exif.data(), static_cast<int>(md.exif.size()));
+        if (e.code != heif_error_Ok) {
+            wxLogWarning("libheif could not store the Exif block: %s", e.message);
+        }
+    }
+    if (!md.xmp.empty()) {
+        // heif_context_add_XMP_metadata2 needs libheif 1.12 or newer.
+        heif_error e = heif_context_add_XMP_metadata2(ctx, handle, md.xmp.data(), static_cast<int>(md.xmp.size()),
+            heif_metadata_compression_off);
+        if (e.code != heif_error_Ok) {
+            wxLogWarning("libheif could not store the XMP packet: %s", e.message);
+        }
+    }
+}
+
+bool Codec::SaveHEIFImage(const wxImage& img, const wxString& filePath, int quality, const MetadataBlobs* metadata) {
     if (!img.IsOk()) {
         wxLogError("Invalid wxImage passed to HEIF encoder.");
         return false;
@@ -127,8 +147,12 @@ bool Codec::SaveHEIFImage(const wxImage& img, const wxString& filePath, int qual
     if (err.code == heif_error_Ok) {
         heif_encoder_set_lossy_quality(encoder, quality);
 
-        err = heif_context_encode_image(ctx, h_image, encoder, nullptr, nullptr);
+        heif_image_handle* encodedHandle = nullptr;
+        err = heif_context_encode_image(ctx, h_image, encoder, nullptr, metadata ? &encodedHandle : nullptr);
         if (err.code == heif_error_Ok) {
+            if (metadata && encodedHandle) {
+                AttachHeifMetadata(ctx, encodedHandle, *metadata);
+            }
             err = heif_context_write_to_file(ctx, filePath.utf8_str().data());
             if (err.code == heif_error_Ok) {
                 success = true;
@@ -139,6 +163,9 @@ bool Codec::SaveHEIFImage(const wxImage& img, const wxString& filePath, int qual
         }
         else {
             wxLogError("Failed to encode HEIF image: %s", err.message);
+        }
+        if (encodedHandle) {
+            heif_image_handle_release(encodedHandle);
         }
         heif_encoder_release(encoder);
     }
@@ -349,7 +376,9 @@ bool Codec::SaveJP2(const wxImage& img, const wxString& filePath, int quality) {
         return false;
     }
 
-    quality = std::clamp(quality, 1, 100);
+	// This line is disabled since it's the only one that requires C++17 instead of C++11.
+    // quality = std::clamp(quality, 1, 100);
+    quality = std::max(1, std::min(100, quality));
 
     wxFileName fileName(filePath);
     fileName.Normalize(wxPATH_NORM_ALL & wxPATH_NORM_ENV_VARS);

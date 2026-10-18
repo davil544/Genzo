@@ -21,6 +21,7 @@ if(APPLE)
         "App.cpp" "App.h"
         "MainFrame.cpp" "MainFrame.h"
         "Codec.cpp" "Codec.h"
+        "Metadata.cpp" "Metadata.h"
         "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h"
     )
 
@@ -42,6 +43,7 @@ else()
         "App.cpp" "App.h"
         "MainFrame.cpp" "MainFrame.h"
         "Codec.cpp" "Codec.h"
+        "Metadata.cpp" "Metadata.h"
         "app_resources.rc"
         "ResponsiveImageFrame.cpp" "ResponsiveImageFrame.h"
     )
@@ -125,10 +127,19 @@ find_package(JPEG REQUIRED)
 target_link_libraries(Genzo PRIVATE JPEG::JPEG)
 
 find_package(WebP CONFIG REQUIRED)
-target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::webpdemux)
+target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::libwebpmux WebP::webpdemux)
 
 find_package(OpenJPEG CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE openjp2)
+
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
+    target_link_libraries(Genzo PRIVATE PkgConfig::GTK3)
+endif()
+
+# TODO: Test to see if this works on macOS
+#target_compile_features(Genzo PRIVATE cxx_std_11)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET Genzo PROPERTY CXX_STANDARD 20)

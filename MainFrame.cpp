@@ -3,19 +3,153 @@
 #include "ResponsiveImageFrame.h"
 #include <wx/wx.h>
 #include <wx/filename.h>
+#include <wx/filedlgcustomize.h> // wxFileDialogCustomizeHook (wxWidgets 3.1.7+)
 #include <wx/aboutdlg.h>
 #include <wx/textfile.h>
 #include <wx/stdpaths.h>
+#include <wx/timer.h>
+#include <functional>
 
 #ifdef __WXGTK__
-    #include "genzo.xpm" 
+    #include "genzo.xpm"
+    #include <gtk/gtk.h>
 #endif
 
 #ifndef APP_VERSION
     #define APP_VERSION "Unknown"
 #endif
 
-MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
+namespace {
+    bool g_preserveMetadata = true; // remembered from one Save dialog to the next
+
+    // "*.heif; *.heic" for filter #N of a "desc|pattern|desc|pattern..." list -> "heif"
+    wxString DefaultExtensionForFilter(const wxString& filters, int index) {
+        const wxArrayString parts = wxSplit(filters, '|');
+        const size_t patternIdx = static_cast<size_t>(index) * 2 + 1;
+        if (index < 0 || patternIdx >= parts.size()) return wxString();
+
+        wxString first = parts[patternIdx].BeforeFirst(';');
+        first.Trim().Trim(false);
+        if (!first.StartsWith("*.")) return wxString();
+
+        wxString ext = first.Mid(2);
+        return ext == "*" ? wxString() : ext; // "All files" has no default extension
+    }
+
+    class PollTimer : public wxTimer {
+    public:
+        explicit PollTimer(std::function<void()> callback) : m_callback(std::move(callback)) {}
+        void Notify() override { m_callback(); }
+    private:
+        std::function<void()> m_callback;
+    };
+
+    class MetadataCustomizeHook : public wxFileDialogCustomizeHook {
+    public:
+        MetadataCustomizeHook(wxFileDialog& dialog, const wxString& filters, unsigned sourceKinds, bool initialValue)
+            : m_dialog(dialog), m_filters(filters), m_sourceKinds(sourceKinds), m_value(initialValue),
+            m_timer([this]() { UpdateCustomControls(); }) {}
+
+        ~MetadataCustomizeHook() { StopPolling(); }
+
+        void AddCustomControls(wxFileDialogCustomize& customizer) override {
+            wxString label = "Preserve image metadata";
+            if (m_sourceKinds != 0) {
+                label << " (" << MetadataBlobs::KindsToString(m_sourceKinds) << ")";
+            }
+            else {
+                label << " (None present)";
+            }
+
+            m_checkBox = customizer.AddCheckBox(label);
+            m_checkBox->SetValue(m_sourceKinds != 0 && m_value);
+            m_checkBox->Enable(m_sourceKinds != 0);
+
+            #ifdef __WXOSX__
+                m_lastVisible = 1;
+                m_timer.Start(300);
+            #else
+                UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
+                m_timer.Start(150);
+            #endif
+        }
+
+        void UpdateCustomControls() override {
+            if (!m_checkBox) return;
+            UpdateVisibility(m_dialog.GetCurrentlySelectedFilename(), CurrentFilterIndex());
+        }
+
+        void TransferDataFromCustomControls() override {
+            if (m_checkBox) m_value = m_checkBox->GetValue();
+        }
+
+        void StopPolling() {
+            if (m_timer.IsRunning()) m_timer.Stop();
+        }
+
+        bool IsChecked() const { return m_value; }
+
+    private:
+        int CurrentFilterIndex() const {
+            int index = m_dialog.GetCurrentlySelectedFilterIndex();
+            #ifdef __WXGTK__
+                if (index == wxNOT_FOUND) index = GtkFilterIndex();
+            #endif
+            #ifndef __WXOSX__
+                if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
+            #endif
+            return index;
+        }
+
+        #ifdef __WXGTK__
+            // Asks GTK which filter is selected and matches its name against our filter descriptions.
+            int GtkFilterIndex() const {
+                GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
+                if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
+
+                GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
+                const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
+                if (!name) return wxNOT_FOUND;
+
+                const wxString current = wxString::FromUTF8(name);
+                const wxArrayString parts = wxSplit(m_filters, '|');
+                for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+                    if (parts[i] == current) return static_cast<int>(i / 2);
+                }
+                return wxNOT_FOUND;
+            }
+        #endif
+
+        void UpdateVisibility(const wxString& selectedName, int filterIndex) {
+            wxString ext;
+            if (!selectedName.empty() && !wxDirExists(selectedName)) {
+                ext = wxFileName(selectedName).GetExt().Lower();
+            }
+            #ifdef __WXOSX__
+                if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+                if (ext.empty()) return;
+            #else
+                if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+            #endif
+
+            const int visible = Metadata::WritableKinds(ext) != 0 ? 1 : 0;
+            if (visible != m_lastVisible) {
+                m_lastVisible = visible;
+                m_checkBox->Show(visible != 0);
+            }
+        }
+
+        wxFileDialog& m_dialog;
+        wxString m_filters;
+        unsigned m_sourceKinds;
+        bool m_value;
+        wxFileDialogCheckBox* m_checkBox = nullptr;
+        int m_lastVisible = -1; // -1 = not set yet
+        PollTimer m_timer;
+    };
+}
+
+MainFrame::MainFrame(const wxString& title) : wxFrame(nullptr, wxID_ANY, title) {
     wxInitAllImageHandlers();
     CreateMenuBar();
     CreateControls();
@@ -38,7 +172,6 @@ void MainFrame::CreateControls() {
         }
     #endif
 
-    
     wxFont headlineFont(wxFontInfo(wxSize(0, 36)).Bold()), subheadlineFont(wxFontInfo(wxSize(0, 13)));;
     headerText = new wxStaticText(panel, wxID_ANY, "Genzo Image Converter", wxPoint(0, 22), wxSize(500, -1), wxALIGN_CENTRE_HORIZONTAL);
     headerText->SetFont(headlineFont);
@@ -128,6 +261,8 @@ void MainFrame::LoadImage(wxString filePath) {
         return;
     }
 
+    sourceMetadata.Clear(); // never let a previous image's metadata leak onto this one
+
     wxFileName fileName(filePath);
     fileName.Normalize(wxPATH_NORM_ALL | wxPATH_NORM_ENV_VARS);
 
@@ -179,9 +314,14 @@ void MainFrame::LoadImage(wxString filePath) {
         btnConvert->Disable();
         return;
     }
+    // Read Exif / IPTC / XMP straight from the file's container. This is independent of which
+    // decoder produced the pixels, and is identified by the file's contents rather than its extension.
+    Metadata::ReadFromFile(filePath, sourceMetadata);
+
     wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
     wxString size = wxString::Format("%d x %d", img.GetWidth(), img.GetHeight());
-    wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s", filePath, size), _("Info"));
+    wxString metadataFound = sourceMetadata.IsEmpty() ? wxString("none") : MetadataBlobs::KindsToString(sourceMetadata.Kinds());
+    wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s\nMetadata: %s", filePath, size, metadataFound), _("Info"));
 
     // TODO: Use this to show an image preview in the main window eventually
     ShowStandaloneImage(this, img, previewFrame);
@@ -189,11 +329,11 @@ void MainFrame::LoadImage(wxString filePath) {
 
 void MainFrame::OnButtonBrowseClick(wxCommandEvent& event) {
     wxLogStatus("Select a file");
-    
-    wxFileDialog openFileDialog(this, _("Open Image file"), "", "", 
+
+    wxFileDialog openFileDialog(this, _("Open Image file"), "", "",
         allSupportedFormats, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (openFileDialog.ShowModal() == wxID_CANCEL) { wxLogStatus("Operation Cancelled"); return; }
-    
+
     wxString filePath = openFileDialog.GetPath();
     wxLogStatus("Loading image, please wait...");
     LoadImage(filePath);
@@ -205,26 +345,67 @@ void MainFrame::OnPathEnter(wxCommandEvent& event) {
 }
 
 void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
-    wxLogStatus("File Conversion Method Called!");  //TODO: Figure out what is needed to convert images to .dib bitmaps
+    wxLogStatus("File Conversion Method Called!");
     wxString filePath = "";
-    
+
     wxFileDialog saveFileDialog(this, _("Save Image file"), "", "",
         supportedFormats, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
-    if (saveFileDialog.ShowModal() == wxID_OK) {
+    // Start on the first filter (JPEG). macOS otherwise comes up on "All files", which has no extension.
+    saveFileDialog.SetFilterIndex(0);
+
+    MetadataCustomizeHook metadataHook(saveFileDialog, supportedFormats, sourceMetadata.Kinds(), g_preserveMetadata);
+    const bool hasMetadataCheckbox = saveFileDialog.SetCustomizeHook(metadataHook);
+
+    const int dialogResult = saveFileDialog.ShowModal();
+    metadataHook.StopPolling();
+
+    if (dialogResult == wxID_OK) {
         filePath = saveFileDialog.GetPath();
         wxFileName fileName(filePath);
         fileName.Normalize(wxPATH_NORM_ALL | wxPATH_NORM_ENV_VARS);
 
+        // No extension typed (macOS and Linux don't add one themselves, and "All files" has none to add):
+        // use the selected filter's extension, or JPEG if that doesn't give one.
+        if (fileName.GetExt().empty()) {
+            wxString defaultExt = DefaultExtensionForFilter(supportedFormats, saveFileDialog.GetFilterIndex());
+            if (defaultExt.empty()) defaultExt = "jpg";
+            fileName.SetExt(defaultExt);
+
+            if (fileName.FileExists() &&
+                wxMessageBox(wxString::Format("\"%s\" already exists. Do you want to replace it?", fileName.GetFullName()),
+                    _("Save Image file"), wxYES_NO | wxICON_QUESTION, this) != wxYES) {
+                wxLogStatus("Conversion Cancelled");
+                return;
+            }
+            filePath = fileName.GetFullPath();
+        }
+
+        const bool formatCanCarry = (Metadata::WritableKinds(fileName.GetExt()) & sourceMetadata.Kinds()) != 0;
+        bool preserveMetadata = g_preserveMetadata;
+        if (hasMetadataCheckbox) {
+            preserveMetadata = metadataHook.IsChecked();
+        }
+        else if (formatCanCarry) {
+            preserveMetadata = wxMessageBox(
+                wxString::Format("Preserve the original metadata (%s) in the converted file?",
+                    MetadataBlobs::KindsToString(sourceMetadata.Kinds())),
+                _("Metadata"), wxYES_NO | wxICON_QUESTION, this) == wxYES;
+        }
+        if (formatCanCarry) {
+            g_preserveMetadata = preserveMetadata;
+        }
+        const bool wantMetadata = preserveMetadata && !sourceMetadata.IsEmpty();
+
         wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
-        
-        // TODO: considering adding a progress bar, maybe separating the conversion process into another thread to so the UI doesn't freeze during conversion?
+
         if (img.IsOk()) {
             wxLogStatus("Converting image, please wait...");
             wxString ext = fileName.GetExt().Lower();
             bool successful = false;
-            if (ext == "heic" || ext == "heif" || ext == "avif") {
-                successful = Codec::SaveHEIFImage(img, filePath);
+            const bool isHeif = (ext == "heic" || ext == "heif" || ext == "avif");
+            if (isHeif) {
+                successful = Codec::SaveHEIFImage(img, filePath, 80, wantMetadata ? &sourceMetadata : nullptr);
             }
             else if (ext == "icns") {
                 successful = Codec::SaveICNS(img, filePath);
@@ -236,25 +417,43 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
                 successful = img.SaveFile(filePath, wxBITMAP_TYPE_TGA);
             }
             else if (img.SaveFile(filePath)) {
-                //wxLogMessage("Image successfully saved to %s", filePath);
                 successful = true;
             }
             else {
                 wxLogError("Failed to save image to '%s'. Check format support.", filePath);
             }
 
+            wxString metadataNote;
+            if (successful && wantMetadata && formatCanCarry) {
+                const unsigned have = sourceMetadata.Kinds();
+                const unsigned canWrite = Metadata::WritableKinds(ext);
+                const unsigned carried = have & canWrite;
+                const unsigned dropped = have & ~canWrite;
+
+                bool embedded = true;
+                if (carried != 0 && !isHeif) {
+                    embedded = Metadata::EmbedInFile(filePath, sourceMetadata);
+                }
+
+                if (!embedded) {
+                    metadataNote = "\nThe image was saved, but its metadata could not be copied.";
+                }
+                else if (carried != 0) {
+                    metadataNote = "\nMetadata preserved: " + MetadataBlobs::KindsToString(carried);
+                    if (dropped != 0) {
+                        metadataNote += " (this format can't store: " + MetadataBlobs::KindsToString(dropped) + ")";
+                    }
+                }
+            }
+
             if (successful) {
-                wxLogMessage("Image successfully saved to %s", filePath);
+                wxLogMessage("Image successfully saved to %s%s", filePath, metadataNote);
                 wxLogStatus("Image converted successfully!  Saved to %s", filePath);
             }
         }
         else {
             wxLogError("Attempted to save an invalid image.");
         }
-        
-        // TODO: Figure out how to append file extension on Linux, does not happen by default for some reason
-        // TODO: Figure out how to preserve EXIF metadata during conversion
-        //wxMessageBox(wxString::Format("File converted and saved as: %s", filePath), _("Info"));
     }
     else {
         wxLogStatus("Conversion Cancelled");
@@ -275,7 +474,7 @@ void MainFrame::OnTextChange(wxCommandEvent& event) {
         //TODO: Tweak this, file isn't necessarily loaded until it is!
         //wxString msg = wxString::Format("Selected file: %s", event.GetString());
         //wxLogStatus(msg, _("Info"));
-        
+
         btnConvert->Enable();
     }
     else {
@@ -331,46 +530,46 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
     auto updateLicenseText = [licenseTextBox, this](int selection) {
         wxString text, lib;
         switch (selection) {
-            case 0:
-                text = "Genzo Image Converter is distributed under the Clear BSD License.\n\n"
-                    "Copyright(c) 2026 Dylan Aviles\n"
-                    "All rights reserved.\n\n" + clear_bsd;
-                break;
-        
-            case 1:
-                text = wxWidgets;
-                break;
+        case 0:
+            text = "Genzo Image Converter is distributed under the Clear BSD License.\n\n"
+                "Copyright(c) 2026 Dylan Aviles\n"
+                "All rights reserved.\n\n" + clear_bsd;
+            break;
 
-            case 2:
-                lib = "libheif";
-                break;
+        case 1:
+            text = wxWidgets;
+            break;
 
-            case 3:
-                lib = "aom";
-                break;
+        case 2:
+            lib = "libheif";
+            break;
 
-            case 4:
-                lib = "dav1d";
-                break;
+        case 3:
+            lib = "aom";
+            break;
 
-            case 5:
-                lib = "kvazaar";
-                break;
+        case 4:
+            lib = "dav1d";
+            break;
 
-            case 6:
-                lib = "libjpeg-turbo";
-                break;
+        case 5:
+            lib = "kvazaar";
+            break;
 
-            case 7:
-                lib = "libwebp";
-                break;
+        case 6:
+            lib = "libjpeg-turbo";
+            break;
 
-            case 8:
-                lib = "openjpeg";
-                break;
+        case 7:
+            lib = "libwebp";
+            break;
 
-            default:
-                break;
+        case 8:
+            lib = "openjpeg";
+            break;
+
+        default:
+            break;
         }
 
         if (selection != 0 && selection != 1) {
