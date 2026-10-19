@@ -1,6 +1,6 @@
 ## The Clear BSD License
 
-Copyright (c) 2026 Dylan Aviles  
+Copyright © 2026 Dylan Aviles  
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

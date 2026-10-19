@@ -120,17 +120,21 @@ else()
     endif()
 endif()
 
-find_package(libheif CONFIG REQUIRED)
-target_link_libraries(Genzo PRIVATE heif)
+find_package(GIF REQUIRED)
+target_link_libraries(Genzo PRIVATE GIF::GIF)
 
 find_package(JPEG REQUIRED)
 target_link_libraries(Genzo PRIVATE JPEG::JPEG)
 
-find_package(WebP CONFIG REQUIRED)
-target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::libwebpmux WebP::webpdemux)
+find_package(libheif CONFIG REQUIRED)
+target_link_libraries(Genzo PRIVATE heif)
 
 find_package(OpenJPEG CONFIG REQUIRED)
 target_link_libraries(Genzo PRIVATE openjp2)
+
+find_package(WebP CONFIG REQUIRED)
+target_link_libraries(Genzo PRIVATE WebP::webp WebP::webpdecoder WebP::libwebpmux WebP::webpdemux)
+
 
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)

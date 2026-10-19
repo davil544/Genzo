@@ -13,6 +13,12 @@ public:
 	static wxImage DecodeJP2(const unsigned char* data, size_t size);
 	static wxImage LoadJP2(const wxString& filePath);
 	static bool SaveJP2(const wxImage& img, const wxString& filePath, int quality);
+	// Static (single-frame) GIF read/write using giflib. These call giflib directly, so they do not
+	// depend on which wxImageHandler wxWidgets picks for GIF.
+	static bool SaveGIF(const wxImage& image, const wxString& filePath);
+	static wxImage LoadGIF(const wxString& filePath);
+	// Also registers the giflib handler with wxImage (call right after wxInitAllImageHandlers()).
+	static void RegisterGIFHandler();
 	static wxImage LoadICNS(const wxString& filePath);
 	static bool SaveICNS(const wxImage& img, const wxString& filePath);
 };

@@ -2,8 +2,7 @@
 #include <wx/graphics.h>
 
 ResponsiveImageFrame::ResponsiveImageFrame(wxFrame* parent, const wxString& title, const wxImage& image)
-    : wxFrame(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE)
-{
+    : wxFrame(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE) {
     if (parent && parent->GetIcon().IsOk()) {
         SetIcon(parent->GetIcon());
     }

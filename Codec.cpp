@@ -6,7 +6,271 @@
 #include <wx/image.h>
 #include <libheif/heif.h>
 #include <openjpeg.h>
-//TODO: Figure out why I cant save gif files
+#include <gif_lib.h>
+#include <wx/stream.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+// Progress lines for the GIF writer; they show up in the Visual Studio Output window in Debug builds.
+#define GIF_TRACE(...) wxLogDebug(__VA_ARGS__)
+
+// ---- giflib encode/decode core. Plain C++ + giflib only (no wxWidgets) ----
+#include <chrono>
+#ifndef GIF_TRACE
+    #define GIF_TRACE(...) ((void)0)
+#endif
+namespace {
+
+    long long GifMs(const std::chrono::steady_clock::time_point& t0) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    }
+
+    // Median-cut quantizer (giflib's own GifQuantizeBuffer isn't declared in the vcpkg build's header).
+    // Input: the R/G/B planes of the opaque pixels. Output: up to `maxColors` palette entries and
+    // one palette index per input pixel.
+    struct GifBin { uint32_t count = 0; uint64_t r = 0, g = 0, b = 0; };
+    struct GifEntry { int key; uint32_t count; };
+    struct GifBox { size_t lo, hi; uint64_t pop; };
+
+    void GifQuantize(const std::vector<GifByteType>& R, const std::vector<GifByteType>& G, const std::vector<GifByteType>& B,
+        int maxColors, std::vector<GifColorType>& palette, std::vector<GifByteType>& indices)
+    {
+        const size_t n = R.size();
+        palette.clear();
+        indices.assign(n, 0);
+        if (n == 0) return;
+
+        auto keyOf = [](int r, int g, int b) { return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3); }; // 5 bits/channel
+
+        std::vector<GifBin> hist(32768);
+        for (size_t i = 0; i < n; ++i) {
+            GifBin& bin = hist[keyOf(R[i], G[i], B[i])];
+            bin.count++; bin.r += R[i]; bin.g += G[i]; bin.b += B[i];
+        }
+        std::vector<GifEntry> entries;
+        for (int k = 0; k < 32768; ++k)
+            if (hist[k].count) entries.push_back({ k, hist[k].count });
+
+        std::vector<GifBox> boxes{ { 0, entries.size(), n } };
+        while (static_cast<int>(boxes.size()) < maxColors) {
+            int best = -1; uint64_t bestPop = 0;
+            for (size_t i = 0; i < boxes.size(); ++i)
+                if (boxes[i].hi - boxes[i].lo > 1 && boxes[i].pop > bestPop) { best = static_cast<int>(i); bestPop = boxes[i].pop; }
+            if (best < 0) break;
+
+            const GifBox b = boxes[best];
+            int mn[3] = { 31, 31, 31 }, mx[3] = { 0, 0, 0 };
+            for (size_t k = b.lo; k < b.hi; ++k) {
+                const int c[3] = { entries[k].key >> 10, (entries[k].key >> 5) & 31, entries[k].key & 31 };
+                for (int j = 0; j < 3; ++j) { mn[j] = std::min(mn[j], c[j]); mx[j] = std::max(mx[j], c[j]); }
+            }
+            int ch = 0;
+            for (int j = 1; j < 3; ++j) if (mx[j] - mn[j] > mx[ch] - mn[ch]) ch = j;
+            const int shift = (ch == 0) ? 10 : (ch == 1 ? 5 : 0);
+            std::sort(entries.begin() + b.lo, entries.begin() + b.hi,
+                [shift](const GifEntry& a, const GifEntry& c) { return ((a.key >> shift) & 31) < ((c.key >> shift) & 31); });
+
+            uint64_t acc = 0; const uint64_t half = b.pop / 2; size_t mid = b.lo + 1;
+            for (size_t k = b.lo; k + 1 < b.hi; ++k) {
+                acc += entries[k].count; mid = k + 1;
+                if (acc >= half) break;
+            }
+            boxes[best] = { b.lo, mid, acc };
+            boxes.push_back({ mid, b.hi, b.pop - acc });
+        }
+
+        for (const GifBox& b : boxes) {
+            uint64_t r = 0, g = 0, bl = 0, cnt = 0;
+            for (size_t k = b.lo; k < b.hi; ++k) {
+                const GifBin& bin = hist[entries[k].key];
+                r += bin.r; g += bin.g; bl += bin.b; cnt += bin.count;
+            }
+            GifColorType c;
+            c.Red = static_cast<GifByteType>((r + cnt / 2) / cnt);
+            c.Green = static_cast<GifByteType>((g + cnt / 2) / cnt);
+            c.Blue = static_cast<GifByteType>((bl + cnt / 2) / cnt);
+            palette.push_back(c);
+        }
+
+        // Nearest palette entry per 5-bit colour, cached so each distinct colour is only searched once.
+        std::vector<int16_t> cache(32768, -1);
+        for (size_t i = 0; i < n; ++i) {
+            const int key = keyOf(R[i], G[i], B[i]);
+            if (cache[key] < 0) {
+                int bestI = 0; long bestD = 1L << 30;
+                for (size_t p = 0; p < palette.size(); ++p) {
+                    const long dr = R[i] - palette[p].Red, dg = G[i] - palette[p].Green, db = B[i] - palette[p].Blue;
+                    const long d = dr * dr + dg * dg + db * db;
+                    if (d < bestD) { bestD = d; bestI = static_cast<int>(p); }
+                }
+                cache[key] = static_cast<int16_t>(bestI);
+            }
+            indices[i] = static_cast<GifByteType>(cache[key]);
+        }
+    }
+
+    // Encodes a single-frame GIF. `rgb` is w*h*3. `alpha` (w*h) or `maskRgb` (3 bytes) mark transparent pixels.
+    // Quantization, palette handling and LZW compression are all done by giflib.
+    bool GifEncodeImage(const unsigned char* rgb, const unsigned char* alpha, const unsigned char* maskRgb,
+        int w, int h, OutputFunc write, void* userData, wxString* error)
+    {
+        auto fail = [&](const wxString& msg) { if (error) *error = msg; return false; };
+        const auto t0 = std::chrono::steady_clock::now();
+        GIF_TRACE("[GIF] encode start: %d x %d, alpha=%d, mask=%d", w, h, alpha ? 1 : 0, maskRgb ? 1 : 0);
+        if (!rgb || w <= 0 || h <= 0) return fail("Empty image.");
+        if (w > 65535 || h > 65535) return fail("GIF images can be at most 65535 x 65535 pixels.");
+        const size_t total = static_cast<size_t>(w) * static_cast<size_t>(h);
+
+        auto transparentAt = [&](size_t i) {
+            if (alpha) return alpha[i] < 128;
+            if (maskRgb) return rgb[3 * i] == maskRgb[0] && rgb[3 * i + 1] == maskRgb[1] && rgb[3 * i + 2] == maskRgb[2];
+            return false;
+            };
+
+        // Split the opaque pixels into R/G/B planes. They're handed to giflib as one long row, so
+        // transparent pixels never influence the palette.
+        std::vector<GifByteType> R, G, B;
+        R.reserve(total); G.reserve(total); B.reserve(total);
+        bool hasTrans = false;
+        for (size_t i = 0; i < total; ++i) {
+            if (transparentAt(i)) { hasTrans = true; continue; }
+            R.push_back(rgb[3 * i]); G.push_back(rgb[3 * i + 1]); B.push_back(rgb[3 * i + 2]);
+        }
+
+        GIF_TRACE("[GIF] split planes: %d opaque pixels, transparent=%d (+%lld ms)", static_cast<int>(R.size()), hasTrans ? 1 : 0, GifMs(t0));
+        // One palette slot is kept back for the transparent colour.
+        std::vector<GifColorType> quantPalette;
+        std::vector<GifByteType> quantIdx;
+        GifQuantize(R, G, B, hasTrans ? 255 : 256, quantPalette, quantIdx);
+        const int colorCount = static_cast<int>(quantPalette.size());
+        GIF_TRACE("[GIF] quantized to %d colours (+%lld ms)", colorCount, GifMs(t0));
+
+        const int usedColors = colorCount + (hasTrans ? 1 : 0);
+        int bits = 1;
+        while ((1 << bits) < usedColors) ++bits;
+        ColorMapObject* map = GifMakeMapObject(1 << bits, nullptr);
+        if (!map) return fail("Out of memory.");
+        for (int i = 0; i < colorCount; ++i) map->Colors[i] = quantPalette[i];
+        const int transIdx = colorCount;
+
+        int err = 0;
+        GifFileType* gif = EGifOpen(userData, write, &err);
+        GIF_TRACE("[GIF] EGifOpen -> %s (+%lld ms)", gif ? "ok" : "FAILED", GifMs(t0));
+        if (!gif) { GifFreeMapObject(map); return fail(GifErrorString(err)); }
+
+        bool ok = true;
+        EGifSetGifVersion(gif, true); // 89a, needed for the transparency extension
+        ok = ok && EGifPutScreenDesc(gif, w, h, 8, 0, map) == GIF_OK;
+        if (ok && hasTrans) {
+            GraphicsControlBlock gcb;
+            gcb.DisposalMode = DISPOSAL_UNSPECIFIED; gcb.UserInputFlag = false; gcb.DelayTime = 0; gcb.TransparentColor = transIdx;
+            GifByteType ext[4];
+            EGifGCBToExtension(&gcb, ext);
+            ok = EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, 4, ext) == GIF_OK;
+        }
+        GIF_TRACE("[GIF] screen desc/extension written, ok=%d (+%lld ms)", ok ? 1 : 0, GifMs(t0));
+        ok = ok && EGifPutImageDesc(gif, 0, 0, w, h, false, nullptr) == GIF_OK;
+        GIF_TRACE("[GIF] image desc written, ok=%d (+%lld ms)", ok ? 1 : 0, GifMs(t0));
+
+        std::vector<GifByteType> row(static_cast<size_t>(w));
+        size_t q = 0;
+        for (int y = 0; ok && y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const size_t i = static_cast<size_t>(y) * w + x;
+                row[x] = transparentAt(i) ? static_cast<GifByteType>(transIdx) : quantIdx[q++];
+            }
+            ok = EGifPutLine(gif, row.data(), w) == GIF_OK;
+            if (h >= 10 && (y + 1) % (h / 10) == 0) GIF_TRACE("[GIF] wrote row %d / %d, ok=%d (+%lld ms)", y + 1, h, ok ? 1 : 0, GifMs(t0));
+        }
+
+        const int lastError = gif->Error;
+        int closeErr = 0;
+        GIF_TRACE("[GIF] rows done, closing (+%lld ms)", GifMs(t0));
+        const bool closed = EGifCloseFile(gif, &closeErr) == GIF_OK; // also frees `gif`
+        GIF_TRACE("[GIF] closed, ok=%d (+%lld ms)", closed ? 1 : 0, GifMs(t0));
+        GifFreeMapObject(map);
+        if (!ok) return fail(GifErrorString(lastError));
+        if (!closed) return fail(GifErrorString(closeErr));
+        return true;
+    }
+
+    struct GifDecoded {
+        int width = 0, height = 0, frameCount = 0;
+        std::vector<unsigned char> rgb;
+        std::vector<unsigned char> alpha; // empty if the frame is fully opaque
+    };
+
+    // Decodes frame `frameIndex` (0 = first) onto a transparent canvas the size of the GIF's logical screen.
+    bool GifDecodeImage(InputFunc read, void* userData, int frameIndex, GifDecoded& out, wxString* error)
+    {
+        auto fail = [&](const wxString& msg) { if (error) *error = msg; return false; };
+
+        int err = 0;
+        GifFileType* gif = DGifOpen(userData, read, &err);
+        if (!gif) return fail(GifErrorString(err));
+        if (DGifSlurp(gif) != GIF_OK) {
+            const int e = gif->Error;
+            int ce = 0; DGifCloseFile(gif, &ce);
+            return fail(GifErrorString(e));
+        }
+
+        bool ok = false;
+        do {
+            out.frameCount = gif->ImageCount;
+            if (gif->ImageCount < 1) { fail("The GIF contains no images."); break; }
+            if (frameIndex < 0) frameIndex = 0;
+            if (frameIndex >= gif->ImageCount) { fail("GIF frame index out of range."); break; }
+
+            const SavedImage& frame = gif->SavedImages[frameIndex];
+            const GifImageDesc& d = frame.ImageDesc;
+            const ColorMapObject* cmap = d.ColorMap ? d.ColorMap : gif->SColorMap;
+            if (!cmap || !frame.RasterBits) { fail("The GIF has no colour map."); break; }
+
+            int sw = gif->SWidth, sh = gif->SHeight;
+            if (sw <= 0 || sh <= 0) { sw = d.Left + d.Width; sh = d.Top + d.Height; }
+            if (sw <= 0 || sh <= 0) { fail("The GIF has an invalid size."); break; }
+
+            GraphicsControlBlock gcb;
+            gcb.TransparentColor = NO_TRANSPARENT_COLOR;
+            if (DGifSavedExtensionToGCB(gif, frameIndex, &gcb) != GIF_OK) gcb.TransparentColor = NO_TRANSPARENT_COLOR;
+
+            const bool coversScreen = d.Left <= 0 && d.Top <= 0 && d.Left + d.Width >= sw && d.Top + d.Height >= sh;
+            const bool needAlpha = gcb.TransparentColor != NO_TRANSPARENT_COLOR || !coversScreen;
+
+            out.width = sw; out.height = sh;
+            out.rgb.assign(static_cast<size_t>(sw) * sh * 3, 0);
+            if (needAlpha) out.alpha.assign(static_cast<size_t>(sw) * sh, 0); else out.alpha.clear();
+
+            // DGifSlurp already de-interlaces the raster bits, so rows can be read in order.
+            for (int sr = 0; sr < d.Height; ++sr) {
+                const int y = d.Top + sr;
+                if (y < 0 || y >= sh) continue;
+                for (int sx = 0; sx < d.Width; ++sx) {
+                    const int x = d.Left + sx;
+                    if (x < 0 || x >= sw) continue;
+                    const int ci = frame.RasterBits[static_cast<size_t>(sr) * d.Width + sx];
+                    const size_t o = static_cast<size_t>(y) * sw + x;
+                    if (ci == gcb.TransparentColor) continue; // stays alpha 0
+                    if (ci < cmap->ColorCount) {
+                        out.rgb[3 * o] = cmap->Colors[ci].Red;
+                        out.rgb[3 * o + 1] = cmap->Colors[ci].Green;
+                        out.rgb[3 * o + 2] = cmap->Colors[ci].Blue;
+                    }
+                    if (needAlpha) out.alpha[o] = 255;
+                }
+            }
+            ok = true;
+        } while (false);
+
+        int ce = 0;
+        DGifCloseFile(gif, &ce);
+        return ok;
+    }
+
+} // namespace
+
 wxImage Codec::LoadHEIFImage(const wxString& filepath) {
     wxImage emptyImage;
 
@@ -376,7 +640,7 @@ bool Codec::SaveJP2(const wxImage& img, const wxString& filePath, int quality) {
         return false;
     }
 
-	// This line is disabled since it's the only one that requires C++17 instead of C++11.
+    // This line is disabled since it's the only one that requires C++17 instead of C++11.
     // quality = std::clamp(quality, 1, 100);
     quality = std::max(1, std::min(100, quality));
 
@@ -549,8 +813,7 @@ wxImage Codec::LoadICNS(const wxString& filePath) {
     return best;
 }
 
-static void WriteBE32(wxFileOutputStream& out, uint32_t value)
-{
+static void WriteBE32(wxFileOutputStream& out, uint32_t value) {
     unsigned char b[4];
     b[0] = static_cast<unsigned char>((value >> 24) & 0xFF);
     b[1] = static_cast<unsigned char>((value >> 16) & 0xFF);
@@ -613,8 +876,7 @@ static wxImage ScaleWithTransparentPadding(const wxImage& src, int targetSize) {
     return padded;
 }
 
-bool Codec::SaveICNS(const wxImage& img, const wxString& filePath)
-{
+bool Codec::SaveICNS(const wxImage& img, const wxString& filePath) {
     if (!img.IsOk()) {
         wxLogError("Invalid wxImage passed to SaveICNS.");
         return false;
@@ -691,4 +953,140 @@ bool Codec::SaveICNS(const wxImage& img, const wxString& filePath)
 
     wxLogMessage("ICNS file successfully written: %s", filePath);
     return true;
+}
+
+#if wxUSE_STREAMS
+namespace {
+
+    int GifReadFromStream(GifFileType* gif, GifByteType* buf, int len) {
+        wxInputStream* s = static_cast<wxInputStream*>(gif->UserData);
+        s->Read(buf, static_cast<size_t>(len));
+        return static_cast<int>(s->LastRead());
+    }
+
+    int GifWriteToStream(GifFileType* gif, const GifByteType* buf, int len) {
+        wxOutputStream* s = static_cast<wxOutputStream*>(gif->UserData);
+        s->Write(buf, static_cast<size_t>(len));
+        return s->LastWrite() == static_cast<size_t>(len) ? len : 0;
+    }
+
+    // Encodes `image` as a GIF into `stream` using giflib. Shared by the wxImage handler and Codec::SaveGIF.
+    bool GifSaveToStream(const wxImage& image, wxOutputStream& stream, bool verbose)
+    {
+        if (!image.IsOk()) return false;
+
+        unsigned char mask[3] = { 0, 0, 0 };
+        const bool useMask = !image.HasAlpha() && image.HasMask();
+        if (useMask) { mask[0] = image.GetMaskRed(); mask[1] = image.GetMaskGreen(); mask[2] = image.GetMaskBlue(); }
+
+        wxString error;
+        const bool ok = GifEncodeImage(image.GetData(), image.HasAlpha() ? image.GetAlpha() : nullptr,
+            useMask ? mask : nullptr, image.GetWidth(), image.GetHeight(),
+            GifWriteToStream, &stream, &error);
+        if (!ok && verbose) wxLogError("Failed to save GIF: %s", error);
+        return ok;
+    }
+
+    // Plugs giflib into wxImage. Once registered (see Codec::RegisterGIFHandler) it takes over from
+    // wxWidgets' built-in GIF handler for wxImage::LoadFile / SaveFile / CanRead, with no wx rebuild needed.
+    class GifLibHandler : public wxImageHandler
+    {
+    public:
+        GifLibHandler() {
+            SetName("GIF file (giflib)");
+            SetExtension("gif");
+            SetType(wxBITMAP_TYPE_GIF);
+            SetMimeType("image/gif");
+        }
+
+        bool LoadFile(wxImage* image, wxInputStream& stream, bool verbose = true, int index = -1) override {
+            GifDecoded d;
+            wxString error;
+            if (!GifDecodeImage(GifReadFromStream, &stream, index, d, &error)) {
+                if (verbose) wxLogError("Failed to load GIF: %s", error);
+                return false;
+            }
+            image->Create(d.width, d.height, false);
+            if (!image->IsOk()) return false;
+            std::memcpy(image->GetData(), d.rgb.data(), d.rgb.size());
+            if (!d.alpha.empty()) {
+                image->InitAlpha();
+                std::memcpy(image->GetAlpha(), d.alpha.data(), d.alpha.size());
+            }
+            return true;
+        }
+
+        bool SaveFile(wxImage* image, wxOutputStream& stream, bool verbose = true) override {
+            wxLogDebug("[GIF] GifLibHandler::SaveFile entered");
+            const bool ok = image && GifSaveToStream(*image, stream, verbose);
+            wxLogDebug("[GIF] GifLibHandler::SaveFile finished, ok=%d", ok ? 1 : 0);
+            return ok;
+        }
+
+    protected:
+        // wxImageHandler::GetImageCount() is a non-virtual wrapper around this.
+        int DoGetImageCount(wxInputStream& stream) override {
+            GifDecoded d;
+            return GifDecodeImage(GifReadFromStream, &stream, 0, d, nullptr) ? d.frameCount : 0;
+        }
+
+        bool DoCanRead(wxInputStream& stream) override {
+            unsigned char sig[6] = {};
+            if (!stream.ReadAll(sig, sizeof(sig))) return false;
+            return std::memcmp(sig, "GIF87a", 6) == 0 || std::memcmp(sig, "GIF89a", 6) == 0;
+        }
+    };
+
+} // namespace
+#endif
+
+void Codec::RegisterGIFHandler() {
+#if wxUSE_STREAMS
+    // Inserted at the front of wxImage's handler list. NOTE: with wxWidgets 3.3.3 this did not
+    // reliably take over wxImage::SaveFile(..., wxBITMAP_TYPE_GIF), so Genzo calls Codec::SaveGIF /
+    // Codec::LoadGIF directly instead. The registration is kept for any other wxImage GIF use.
+    wxImage::InsertHandler(new GifLibHandler);
+    const wxImageHandler* active = wxImage::FindHandler(wxBITMAP_TYPE_GIF);
+    wxLogDebug("[GIF] giflib handler registered; wxImage's GIF handler is now: %s",
+        active ? active->GetName() : wxString("(none)"));
+#endif
+}
+
+bool Codec::SaveGIF(const wxImage& image, const wxString& filePath) {
+#if wxUSE_STREAMS
+    if (!image.IsOk()) return false;
+
+    wxFileOutputStream file(filePath);
+    if (!file.IsOk()) {
+        wxLogError("Could not open '%s' for writing.", filePath);
+        return false;
+    }
+    wxBufferedOutputStream out(file);
+
+    if (!GifSaveToStream(image, out, true)) return false;
+
+    if (!out.Close()) {
+        wxLogError("Failed to finish writing '%s'.", filePath);
+        return false;
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+wxImage Codec::LoadGIF(const wxString& filePath) {
+    wxImage result;
+#if wxUSE_STREAMS
+    wxFileInputStream file(filePath);
+    if (!file.IsOk()) {
+        wxLogError("Could not open '%s' for reading.", filePath);
+        return result;
+    }
+    wxBufferedInputStream in(file);
+
+    GifLibHandler handler;
+    if (!handler.LoadFile(&result, in, true, -1)) result = wxImage();
+#endif
+    return result;
 }

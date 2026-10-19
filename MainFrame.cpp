@@ -11,12 +11,12 @@
 #include <functional>
 
 #ifdef __WXGTK__
-    #include "genzo.xpm"
-    #include <gtk/gtk.h>
+#include "genzo.xpm"
+#include <gtk/gtk.h>
 #endif
 
 #ifndef APP_VERSION
-    #define APP_VERSION "Unknown"
+#define APP_VERSION "Unknown"
 #endif
 
 namespace {
@@ -65,13 +65,13 @@ namespace {
             m_checkBox->SetValue(m_sourceKinds != 0 && m_value);
             m_checkBox->Enable(m_sourceKinds != 0);
 
-            #ifdef __WXOSX__
-                m_lastVisible = 1;
-                m_timer.Start(300);
-            #else
-                UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
-                m_timer.Start(150);
-            #endif
+#ifdef __WXOSX__
+            m_lastVisible = 1;
+            m_timer.Start(300);
+#else
+            UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
+            m_timer.Start(150);
+#endif
         }
 
         void UpdateCustomControls() override {
@@ -92,45 +92,45 @@ namespace {
     private:
         int CurrentFilterIndex() const {
             int index = m_dialog.GetCurrentlySelectedFilterIndex();
-            #ifdef __WXGTK__
-                if (index == wxNOT_FOUND) index = GtkFilterIndex();
-            #endif
-            #ifndef __WXOSX__
-                if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
-            #endif
+#ifdef __WXGTK__
+            if (index == wxNOT_FOUND) index = GtkFilterIndex();
+#endif
+#ifndef __WXOSX__
+            if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
+#endif
             return index;
         }
 
-        #ifdef __WXGTK__
-            // Asks GTK which filter is selected and matches its name against our filter descriptions.
-            int GtkFilterIndex() const {
-                GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
-                if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
+#ifdef __WXGTK__
+        // Asks GTK which filter is selected and matches its name against our filter descriptions.
+        int GtkFilterIndex() const {
+            GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
+            if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
 
-                GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
-                const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
-                if (!name) return wxNOT_FOUND;
+            GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
+            const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
+            if (!name) return wxNOT_FOUND;
 
-                const wxString current = wxString::FromUTF8(name);
-                const wxArrayString parts = wxSplit(m_filters, '|');
-                for (size_t i = 0; i + 1 < parts.size(); i += 2) {
-                    if (parts[i] == current) return static_cast<int>(i / 2);
-                }
-                return wxNOT_FOUND;
+            const wxString current = wxString::FromUTF8(name);
+            const wxArrayString parts = wxSplit(m_filters, '|');
+            for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+                if (parts[i] == current) return static_cast<int>(i / 2);
             }
-        #endif
+            return wxNOT_FOUND;
+        }
+#endif
 
         void UpdateVisibility(const wxString& selectedName, int filterIndex) {
             wxString ext;
             if (!selectedName.empty() && !wxDirExists(selectedName)) {
                 ext = wxFileName(selectedName).GetExt().Lower();
             }
-            #ifdef __WXOSX__
-                if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-                if (ext.empty()) return;
-            #else
-                if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-            #endif
+#ifdef __WXOSX__
+            if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+            if (ext.empty()) return;
+#else
+            if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+#endif
 
             const int visible = Metadata::WritableKinds(ext) != 0 ? 1 : 0;
             if (visible != m_lastVisible) {
@@ -151,6 +151,7 @@ namespace {
 
 MainFrame::MainFrame(const wxString& title) : wxFrame(nullptr, wxID_ANY, title) {
     wxInitAllImageHandlers();
+    Codec::RegisterGIFHandler();
     CreateMenuBar();
     CreateControls();
     SetupSizers();
@@ -161,16 +162,16 @@ MainFrame::MainFrame(const wxString& title) : wxFrame(nullptr, wxID_ANY, title) 
 void MainFrame::CreateControls() {
     panel = new wxPanel(this);
 
-    #if defined(__WXMSW__)
-        SetIcon(wxICON(IDI_ICON1));
-    #elif defined(__WXGTK__)
-        SetIcon(wxIcon(genzo_xpm));
-    #elif defined(__WXMAC__)
-        wxIcon macIcon;
-        if (macIcon.LoadFile(wxStandardPaths::Get().GetResourcesDir() + "genzo.icns", wxBITMAP_TYPE_ICON)) {
-            SetIcon(macIcon);
-        }
-    #endif
+#if defined(__WXMSW__)
+    SetIcon(wxICON(IDI_ICON1));
+#elif defined(__WXGTK__)
+    SetIcon(wxIcon(genzo_xpm));
+#elif defined(__WXMAC__)
+    wxIcon macIcon;
+    if (macIcon.LoadFile(wxStandardPaths::Get().GetResourcesDir() + "genzo.icns", wxBITMAP_TYPE_ICON)) {
+        SetIcon(macIcon);
+    }
+#endif
 
     wxFont headlineFont(wxFontInfo(wxSize(0, 36)).Bold()), subheadlineFont(wxFontInfo(wxSize(0, 13)));;
     headerText = new wxStaticText(panel, wxID_ANY, "Genzo Image Converter", wxPoint(0, 22), wxSize(500, -1), wxALIGN_CENTRE_HORIZONTAL);
@@ -276,6 +277,18 @@ void MainFrame::LoadImage(wxString filePath) {
         else {
             img.Destroy();
             wxMessageBox("Failed to load image using libheif!", "Error", wxOK | wxICON_ERROR);
+            btnConvert->Disable();
+            return;
+        }
+    }
+    else if (fileName.GetExt().Lower() == "gif") {
+        img = Codec::LoadGIF(filePath);
+        if (img.IsOk()) {
+            btnConvert->Enable();
+        }
+        else {
+            img.Destroy();
+            wxMessageBox("Failed to load GIF using giflib!", "Error", wxOK | wxICON_ERROR);
             btnConvert->Disable();
             return;
         }
@@ -406,6 +419,9 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
             const bool isHeif = (ext == "heic" || ext == "heif" || ext == "avif");
             if (isHeif) {
                 successful = Codec::SaveHEIFImage(img, filePath, 80, wantMetadata ? &sourceMetadata : nullptr);
+            }
+            else if (ext == "gif") {
+                successful = Codec::SaveGIF(img, filePath);
             }
             else if (ext == "icns") {
                 successful = Codec::SaveICNS(img, filePath);

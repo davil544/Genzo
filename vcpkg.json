@@ -11,6 +11,7 @@
       "platform": "osx"
     },
     "dav1d",
+    "giflib",
     "libjpeg-turbo",
     "libwebp",
     "openjpeg"
