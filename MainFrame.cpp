@@ -11,12 +11,12 @@
 #include <functional>
 
 #ifdef __WXGTK__
-#include "genzo.xpm"
-#include <gtk/gtk.h>
+    #include "genzo.xpm"
+    #include <gtk/gtk.h>
 #endif
 
 #ifndef APP_VERSION
-#define APP_VERSION "Unknown"
+    #define APP_VERSION "Unknown"
 #endif
 
 namespace {
@@ -65,13 +65,13 @@ namespace {
             m_checkBox->SetValue(m_sourceKinds != 0 && m_value);
             m_checkBox->Enable(m_sourceKinds != 0);
 
-#ifdef __WXOSX__
-            m_lastVisible = 1;
-            m_timer.Start(300);
-#else
-            UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
-            m_timer.Start(150);
-#endif
+            #ifdef __WXOSX__
+                m_lastVisible = 1;
+                m_timer.Start(300);
+            #else
+                UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
+                m_timer.Start(150);
+            #endif
         }
 
         void UpdateCustomControls() override {
@@ -92,45 +92,45 @@ namespace {
     private:
         int CurrentFilterIndex() const {
             int index = m_dialog.GetCurrentlySelectedFilterIndex();
-#ifdef __WXGTK__
-            if (index == wxNOT_FOUND) index = GtkFilterIndex();
-#endif
-#ifndef __WXOSX__
-            if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
-#endif
+            #ifdef __WXGTK__
+                if (index == wxNOT_FOUND) index = GtkFilterIndex();
+            #endif
+            #ifndef __WXOSX__
+                if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
+            #endif
             return index;
         }
 
-#ifdef __WXGTK__
-        // Asks GTK which filter is selected and matches its name against our filter descriptions.
-        int GtkFilterIndex() const {
-            GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
-            if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
+        #ifdef __WXGTK__
+            // Asks GTK which filter is selected and matches its name against our filter descriptions.
+            int GtkFilterIndex() const {
+                GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
+                if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
 
-            GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
-            const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
-            if (!name) return wxNOT_FOUND;
+                GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
+                const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
+                if (!name) return wxNOT_FOUND;
 
-            const wxString current = wxString::FromUTF8(name);
-            const wxArrayString parts = wxSplit(m_filters, '|');
-            for (size_t i = 0; i + 1 < parts.size(); i += 2) {
-                if (parts[i] == current) return static_cast<int>(i / 2);
+                const wxString current = wxString::FromUTF8(name);
+                const wxArrayString parts = wxSplit(m_filters, '|');
+                for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+                    if (parts[i] == current) return static_cast<int>(i / 2);
+                }
+                return wxNOT_FOUND;
             }
-            return wxNOT_FOUND;
-        }
-#endif
+        #endif
 
         void UpdateVisibility(const wxString& selectedName, int filterIndex) {
             wxString ext;
             if (!selectedName.empty() && !wxDirExists(selectedName)) {
                 ext = wxFileName(selectedName).GetExt().Lower();
             }
-#ifdef __WXOSX__
-            if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-            if (ext.empty()) return;
-#else
-            if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-#endif
+            #ifdef __WXOSX__
+                if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+                if (ext.empty()) return;
+            #else
+                if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+            #endif
 
             const int visible = Metadata::WritableKinds(ext) != 0 ? 1 : 0;
             if (visible != m_lastVisible) {
@@ -531,6 +531,7 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
     libraryOptions.Add("libheif");
     libraryOptions.Add("aom");
     libraryOptions.Add("dav1d");
+    libraryOptions.Add("giflib");
     libraryOptions.Add("kvazaar");
     libraryOptions.Add("libjpeg-turbo");
     libraryOptions.Add("libwebp");
@@ -569,18 +570,22 @@ void MainFrame::OnAbout(wxCommandEvent& event) {
             break;
 
         case 5:
-            lib = "kvazaar";
+            lib = "giflib";
             break;
 
         case 6:
-            lib = "libjpeg-turbo";
+            lib = "kvazaar";
             break;
 
         case 7:
-            lib = "libwebp";
+            lib = "libjpeg-turbo";
             break;
 
         case 8:
+            lib = "libwebp";
+            break;
+
+        case 9:
             lib = "openjpeg";
             break;
 
