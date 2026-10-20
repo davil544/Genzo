@@ -11,12 +11,12 @@
 #include <functional>
 
 #ifdef __WXGTK__
-    #include "genzo.xpm"
-    #include <gtk/gtk.h>
+#include "genzo.xpm"
+#include <gtk/gtk.h>
 #endif
 
 #ifndef APP_VERSION
-    #define APP_VERSION "Unknown"
+#define APP_VERSION "Unknown"
 #endif
 
 namespace {
@@ -65,13 +65,13 @@ namespace {
             m_checkBox->SetValue(m_sourceKinds != 0 && m_value);
             m_checkBox->Enable(m_sourceKinds != 0);
 
-            #ifdef __WXOSX__
-                m_lastVisible = 1;
-                m_timer.Start(300);
-            #else
-                UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
-                m_timer.Start(150);
-            #endif
+#ifdef __WXOSX__
+            m_lastVisible = 1;
+            m_timer.Start(300);
+#else
+            UpdateVisibility(wxEmptyString, m_dialog.GetFilterIndex());
+            m_timer.Start(150);
+#endif
         }
 
         void UpdateCustomControls() override {
@@ -92,45 +92,45 @@ namespace {
     private:
         int CurrentFilterIndex() const {
             int index = m_dialog.GetCurrentlySelectedFilterIndex();
-            #ifdef __WXGTK__
-                if (index == wxNOT_FOUND) index = GtkFilterIndex();
-            #endif
-            #ifndef __WXOSX__
-                if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
-            #endif
+#ifdef __WXGTK__
+            if (index == wxNOT_FOUND) index = GtkFilterIndex();
+#endif
+#ifndef __WXOSX__
+            if (index == wxNOT_FOUND) index = m_dialog.GetFilterIndex();
+#endif
             return index;
         }
 
-        #ifdef __WXGTK__
-            // Asks GTK which filter is selected and matches its name against our filter descriptions.
-            int GtkFilterIndex() const {
-                GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
-                if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
+#ifdef __WXGTK__
+        // Asks GTK which filter is selected and matches its name against our filter descriptions.
+        int GtkFilterIndex() const {
+            GtkWidget* widget = static_cast<GtkWidget*>(m_dialog.GetHandle());
+            if (!widget || !GTK_IS_FILE_CHOOSER(widget)) return wxNOT_FOUND;
 
-                GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
-                const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
-                if (!name) return wxNOT_FOUND;
+            GtkFileFilter* filter = gtk_file_chooser_get_filter(GTK_FILE_CHOOSER(widget));
+            const gchar* name = filter ? gtk_file_filter_get_name(filter) : nullptr;
+            if (!name) return wxNOT_FOUND;
 
-                const wxString current = wxString::FromUTF8(name);
-                const wxArrayString parts = wxSplit(m_filters, '|');
-                for (size_t i = 0; i + 1 < parts.size(); i += 2) {
-                    if (parts[i] == current) return static_cast<int>(i / 2);
-                }
-                return wxNOT_FOUND;
+            const wxString current = wxString::FromUTF8(name);
+            const wxArrayString parts = wxSplit(m_filters, '|');
+            for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+                if (parts[i] == current) return static_cast<int>(i / 2);
             }
-        #endif
+            return wxNOT_FOUND;
+        }
+#endif
 
         void UpdateVisibility(const wxString& selectedName, int filterIndex) {
             wxString ext;
             if (!selectedName.empty() && !wxDirExists(selectedName)) {
                 ext = wxFileName(selectedName).GetExt().Lower();
             }
-            #ifdef __WXOSX__
-                if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-                if (ext.empty()) return;
-            #else
-                if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
-            #endif
+#ifdef __WXOSX__
+            if (ext.empty() && filterIndex != wxNOT_FOUND) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+            if (ext.empty()) return;
+#else
+            if (ext.empty()) ext = DefaultExtensionForFilter(m_filters, filterIndex);
+#endif
 
             const int visible = Metadata::WritableKinds(ext) != 0 ? 1 : 0;
             if (visible != m_lastVisible) {
@@ -263,6 +263,7 @@ void MainFrame::LoadImage(wxString filePath) {
     }
 
     sourceMetadata.Clear(); // never let a previous image's metadata leak onto this one
+    animation.Clear();
 
     wxFileName fileName(filePath);
     fileName.Normalize(wxPATH_NORM_ALL | wxPATH_NORM_ENV_VARS);
@@ -270,7 +271,7 @@ void MainFrame::LoadImage(wxString filePath) {
     // TODO: Rework this if statement so I don't have 2 almost identical else statements!
     // TODO: Rework the check for heif files to rely less on file extensions and more on file format!  Other image types load w/o an extension!
     if (fileName.GetExt() == "heic" || fileName.GetExt() == "heif" || fileName.GetExt() == "avif") {
-        img = Codec::LoadHEIFImage(filePath);
+        img = Codec::LoadHEIFAnimation(filePath, animation) ? animation.frames[0].image : wxImage();
         if (img.IsOk()) {
             btnConvert->Enable();
         }
@@ -282,13 +283,25 @@ void MainFrame::LoadImage(wxString filePath) {
         }
     }
     else if (fileName.GetExt().Lower() == "gif") {
-        img = Codec::LoadGIF(filePath);
+        img = Codec::LoadGIFAnimation(filePath, animation) ? animation.frames[0].image : wxImage();
         if (img.IsOk()) {
             btnConvert->Enable();
         }
         else {
             img.Destroy();
             wxMessageBox("Failed to load GIF using giflib!", "Error", wxOK | wxICON_ERROR);
+            btnConvert->Disable();
+            return;
+        }
+    }
+    else if (fileName.GetExt().Lower() == "webp") {
+        img = Codec::LoadWebPAnimation(filePath, animation) ? animation.frames[0].image : wxImage();
+        if (img.IsOk()) {
+            btnConvert->Enable();
+        }
+        else {
+            img.Destroy();
+            wxMessageBox("Failed to load WebP using libwebp!", "Error", wxOK | wxICON_ERROR);
             btnConvert->Disable();
             return;
         }
@@ -334,7 +347,8 @@ void MainFrame::LoadImage(wxString filePath) {
     wxLogStatus(wxString::Format("Selected file: %s", filePath), _("Info"));
     wxString size = wxString::Format("%d x %d", img.GetWidth(), img.GetHeight());
     wxString metadataFound = sourceMetadata.IsEmpty() ? wxString("none") : MetadataBlobs::KindsToString(sourceMetadata.Kinds());
-    wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s\nMetadata: %s", filePath, size, metadataFound), _("Info"));
+    wxString frames = animation.IsAnimated() ? wxString::Format("\nAnimation Frames: %d", static_cast<int>(animation.frames.size())) : wxString();
+    wxMessageBox(wxString::Format("Selected file: %s\nImage Size in Pixels: %s\nMetadata: %s%s", filePath, size, metadataFound, frames), _("Info"));
 
     // TODO: Use this to show an image preview in the main window eventually
     ShowStandaloneImage(this, img, previewFrame);
@@ -417,11 +431,18 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
             wxString ext = fileName.GetExt().Lower();
             bool successful = false;
             const bool isHeif = (ext == "heic" || ext == "heif" || ext == "avif");
+            // Animated sources keep their animation when the target can hold one (GIF, WebP, AVIF); everything else gets the first frame.
+            const bool animatedSource = animation.IsAnimated();
+            const AnimatedImage stillSource = AnimatedImage::FromImage(img);
+            const AnimatedImage& source = animatedSource ? animation : stillSource;
             if (isHeif) {
-                successful = Codec::SaveHEIFImage(img, filePath, 80, wantMetadata ? &sourceMetadata : nullptr);
+                successful = Codec::SaveHEIFImage(source, filePath, 80, wantMetadata ? &sourceMetadata : nullptr);
             }
             else if (ext == "gif") {
-                successful = Codec::SaveGIF(img, filePath);
+                successful = Codec::SaveGIF(source, filePath);
+            }
+            else if (ext == "webp" && animatedSource) {
+                successful = Codec::SaveWebPAnimation(source, filePath);
             }
             else if (ext == "icns") {
                 successful = Codec::SaveICNS(img, filePath);
@@ -460,6 +481,10 @@ void MainFrame::OnButtonConvertClick(wxCommandEvent& event) {
                         metadataNote += " (this format can't store: " + MetadataBlobs::KindsToString(dropped) + ")";
                     }
                 }
+            }
+
+            if (successful && animatedSource && ext != "gif" && ext != "webp" && ext != "avif") {
+                metadataNote += "\nThis format can't store animations, so only the first frame was saved.";
             }
 
             if (successful) {
